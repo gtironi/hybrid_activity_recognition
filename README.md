@@ -46,14 +46,9 @@ Scripts responsible for transforming raw CSVs into optimized Parquet files and g
 
 Scripts representing the evolution of our approach, from baselines to advanced SSL.
 
-  * **`Neural_Network.ipynb`**: *Early Experiment.* A simple Dense Neural Network. Failed to capture temporal dependencies, resulting in poor accuracy (\~30%) and majority-class bias.
   * **`Random_forest.ipynb`**: *Early Experiment.* Random Forest applied to raw data (no TSFEL). Showed high instability (Test 68% vs Validation 13%), indicating severe overfitting to specific subjects.
-  * **`modelos_comparacao.ipynb`**: *Temporal Analysis.* Benchmark of 12 architecture variations (LSTM, CNN1D, CNN2D, Hybrid).
-      * **Key Insight:** "Forward-looking" models performed poorly (\~20%). "Backward-looking" (causal) models performed best (\~58%), proving behavior classification relies on past context.
   * **`actbecalf-dl.ipynb`**: *Transformer & Baseline.* Implementation of **TimeMAE** (Masked Autoencoders) vs. **ResNet-1D Baseline**.
       * Result: Transformer (54%) failed to beat the CNN Baseline (56%) due to the low entropy of the calf movement data.
-  * **`simCLR.ipynb` & `simclr_comparison.ipynb`**: *Contrastive Learning.* First successful attempt at SSL using SimCLR.
-      * Result: Achieved \~82% accuracy, but was limited to a simplified subset of **8 classes** (vs the full 19).
 
 ## 4\. Final Model (The Solution)
 
@@ -74,16 +69,16 @@ Our approach evolved through three distinct phases, driven by error analysis and
 We started with standard Deep Learning architectures (CNN1D, LSTM).
 
   * **Challenge:** The models struggled to generalize across subjects.
-  * **Experiment:** We tested specific temporal directions in `modelos_comparacao.ipynb`.
+  * **Experiment:** We tested specific temporal directions (forward vs causal windows) across CNN/LSTM variants.
   * **Finding:** Pure LSTMs were too slow. Pure CNNs lacked long-term context. "Looking ahead" (Forward window) destroyed accuracy.
   * **Result:** Accuracy plateaued at **\~56%**.
 
-## Phase 2: The Self-Supervised Pivot (SimCLR & TimeMAE)
+## Phase 2: The Self-Supervised Pivot (TimeMAE & contrastive exploration)
 
 Hypothesizing that labeled data was insufficient (only 27 hours vs 2000+ hours available), we turned to SSL.
 
   * **TimeMAE:** Tried to reconstruct masked signals. Failed because calf data has low entropy (lots of lying down), making reconstruction "too easy" and uninformative.
-  * **SimCLR:** Contrastive learning showed great promise (**\~82%**), but we were simplifying the problem to only 8 classes. We needed a solution for the full 19-behavior taxonomy.
+  * **Contrastive learning (e.g. SimCLR-style):** Showed strong accuracy on a simplified **8-class** subset, but scaling fairly to the full **19-class** taxonomy required a different approach.
 
 ## Phase 3: Hybrid Architecture + FixMatch (Final Solution)
 
@@ -122,7 +117,6 @@ To overcome the challenges of extreme class imbalance (e.g., "Lying" is >48% of 
 
 | Model Architecture | Input Type | Strategy | Accuracy (Test) |
 | :--- | :--- | :--- | :--- |
-| **Dense NN** | Raw | Supervised | 28% (+-4%) |
 | **ResNet-1D** | Raw | Supervised | 56% (+- 2%) |
 | **CNN2D** | Raw | Supervised | 52% (+- 1%) |
 | **LSTM** | Raw | Supervised | 54% (+- 1%) |
@@ -131,8 +125,6 @@ To overcome the challenges of extreme class imbalance (e.g., "Lying" is >48% of 
 | **TimeMAE** | Raw | Self-Supervised | 54% (+- 2%) |
 | **Random Forest** | Raw | Supervised | 13% to 68% (incosistent) |
 | **Random Forest** | TSFEL Features | Supervised | 78.5% (+- 1.5%) |
-| **SimCLR Initial** | Raw | Contrastive (8 Classes) | 64% (+- 3%) |
-| **SimCLR** | Raw | Contrastive (8 Classes) | 82% (+- 1%) |
 | **Hybrid CNN-LSTM** | Raw + TSFEL | Supervised | 80% (+- 2%) |
 | **Hybrid CNN-LSTM (FixMatch)** | **Raw + TSFEL** | **FixMatch (SSL)** | **83.4% (+- 1%)** |
 
