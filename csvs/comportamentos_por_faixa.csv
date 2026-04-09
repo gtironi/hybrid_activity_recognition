@@ -1,0 +1,7 @@
+Faixa,Número de Comportamentos,Comportamentos,Total de Registros,Percentual (%)
+< 1.000,13,"SRS, cough, cross-suckle_other, drinking_electrolytes, eating, fall, grooming|None, mount, play, rumination, social_nudge_lying, tongue_rolling_lying, vocalization",4810,0.19
+1.000 - 10.000,18,"backward, cross-suckle_udder, defecation, drinking, drinking|water, jump, lying-down, play_object, rising, rub, sniff_lying, social, social_groom_lying, social_nudge, social_sniff_lying, stretch, tongue_rolling, urination",85591,3.47
+10.000 - 50.000,8,"abnormal, grooming_lying, headbutt, rumination_lying, scratch, sniff_walking, social_groom, social_sniff",132139,5.36
+50.000 - 100.000,3,"eating_forage, running, walking",231110,9.37
+100.000 - 200.000,6,"eating_bedding, eating_concentrates, grooming, oral_manipulation_of_pen, sniff, standing",831253,33.69
+> 200.000,2,"drinking_milk, lying",1182259,47.92

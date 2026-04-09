@@ -1,0 +1,5 @@
+﻿,Forward-Looking,Backward-Looking,Bidirectional
+LSTM,22.2,54.14,54.47
+CNN1D,19.34,55.19,55.65
+CNN2D,29.26,52.73,52.73
+CNN+LSTM,38.09,58.01,52.73
