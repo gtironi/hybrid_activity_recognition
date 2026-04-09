@@ -15,6 +15,7 @@ import torch
 
 from hybrid_activity_recognition.data.dataloader import (
     prepare_supervised_dataloaders,
+    prepare_train_val_test_loaders,
     prepare_unlabeled_dataloader,
 )
 from hybrid_activity_recognition.models.hybrid_cnn_lstm.model import HybridCNNLSTM
@@ -45,7 +46,31 @@ def parse_args():
     p = argparse.ArgumentParser(description="Treino híbrido AcTBeCalf (PyTorch)")
     p.add_argument("--mode", choices=("supervised", "finetune", "fixmatch", "test"), required=True)
     p.add_argument("--model", choices=("hybrid_cnn_lstm", "robust_hybrid"), default="robust_hybrid")
-    p.add_argument("--labeled_parquet", type=str, required=True, help="Ex.: WindowedCalf.parquet")
+    p.add_argument(
+        "--labeled_parquet",
+        type=str,
+        default="",
+        help="Um único Parquet janelado; split interno 80/10/10 (legado).",
+    )
+    p.add_argument(
+        "--labeled_parquet_train",
+        type=str,
+        default="",
+        help="Parquet janelado de treino (usa com --labeled_parquet_test; sem vazamento de normalização).",
+    )
+    p.add_argument("--labeled_parquet_test", type=str, default="", help="Parquet janelado de teste fixo.")
+    p.add_argument(
+        "--labeled_parquet_val",
+        type=str,
+        default="",
+        help="Parquet janelado de validação opcional (senão usa --val_fraction no treino).",
+    )
+    p.add_argument(
+        "--val_fraction",
+        type=float,
+        default=0.1,
+        help="Fração estratificada do treino para validação (ignorada se --labeled_parquet_val).",
+    )
     p.add_argument("--unlabeled_parquet", type=str, default="", help="Obrigatório se mode=fixmatch")
     p.add_argument("--output_dir", type=str, default="experiments/runs")
     p.add_argument("--seed", type=int, default=42)
@@ -63,6 +88,35 @@ def parse_args():
     return p.parse_args()
 
 
+def _prepare_labeled_loaders(args):
+    has_pair = bool(args.labeled_parquet_train) and bool(args.labeled_parquet_test)
+    has_single = bool(args.labeled_parquet)
+    if has_pair and has_single:
+        raise SystemExit("Use apenas --labeled_parquet OU o par train/test, não ambos.")
+    if has_pair:
+        val_path = args.labeled_parquet_val.strip() or None
+        return prepare_train_val_test_loaders(
+            args.labeled_parquet_train,
+            args.labeled_parquet_test,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            random_state=args.seed,
+            val_fraction=args.val_fraction,
+            parquet_val_path=val_path,
+        )
+    if has_single:
+        return prepare_supervised_dataloaders(
+            args.labeled_parquet,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+            random_state=args.seed,
+        )
+    raise SystemExit(
+        "Indique --labeled_parquet (split interno) ou "
+        "--labeled_parquet_train e --labeled_parquet_test (teste fixo)."
+    )
+
+
 def main():
     _ensure_src_on_path()
     args = parse_args()
@@ -76,12 +130,7 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
 
     if args.mode == "test":
-        train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = prepare_supervised_dataloaders(
-            args.labeled_parquet,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            random_state=args.seed,
-        )
+        train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = _prepare_labeled_loaders(args)
         ckpt = args.checkpoint or str(out / "finetuned_best.pt")
         model = build_model(args.model, num_classes, n_feats, args.hidden_lstm).to(device)
         trainer = Trainer(model, device, out)
@@ -91,12 +140,7 @@ def main():
         print(f"test accuracy={metrics['accuracy']:.4f} macro_f1={metrics['f1_macro']:.4f}")
         return
 
-    train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = prepare_supervised_dataloaders(
-        args.labeled_parquet,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        random_state=args.seed,
-    )
+    train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = _prepare_labeled_loaders(args)
     print(f"classes={len(class_names)} n_tsfel_feats={n_feats}")
 
     model = build_model(args.model, num_classes, n_feats, args.hidden_lstm).to(device)
