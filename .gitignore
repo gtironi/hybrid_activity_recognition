@@ -5,3 +5,8 @@ __pycache__/
 *.pth
 *.json
 *.npz
+
+# Dados brutos grandes (obter pelo Zenodo / localmente; não versionar CSV completo)
+dataset/*.csv
+dataset/*.parquet
+
