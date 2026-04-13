@@ -1,13 +1,14 @@
 """
-Ponto de entrada: experimentos supervisionados, fine-tune, FixMatch e teste.
+Entry point for supervised, pretrain, fine-tune, FixMatch, and test experiments.
 
-Uso típico a partir da raiz do repositório:
+Usage from repository root:
   PYTHONPATH=src python -m hybrid_activity_recognition.main --help
 """
 
 from __future__ import annotations
 
 import argparse
+import logging
 import sys
 from pathlib import Path
 
@@ -18,11 +19,13 @@ from hybrid_activity_recognition.data.dataloader import (
     prepare_train_val_test_loaders,
     prepare_unlabeled_dataloader,
 )
-from hybrid_activity_recognition.models.hybrid_cnn_lstm.model import HybridCNNLSTM
-from hybrid_activity_recognition.models.robust_hybrid.model import RobustHybridModel
+from hybrid_activity_recognition.models.modular import build_hybrid_model
 from hybrid_activity_recognition.training.metrics import classification_metrics_numpy
 from hybrid_activity_recognition.training.trainer import Trainer
+from hybrid_activity_recognition.utils.logging import setup_logging
 from hybrid_activity_recognition.utils.repro import set_seed
+
+logger = logging.getLogger(__name__)
 
 
 def _ensure_src_on_path():
@@ -32,67 +35,95 @@ def _ensure_src_on_path():
         sys.path.insert(0, str(src_root))
 
 
-def build_model(name: str, num_classes: int, n_feats: int, hidden_lstm: int | None):
-    if name == "hybrid_cnn_lstm":
-        h = hidden_lstm if hidden_lstm is not None else 64
-        return HybridCNNLSTM(num_classes=num_classes, n_features_tsfel=n_feats, hidden_lstm=h)
-    if name == "robust_hybrid":
-        h = hidden_lstm if hidden_lstm is not None else 128
-        return RobustHybridModel(num_classes=num_classes, n_features_tsfel=n_feats, hidden_lstm=h)
-    raise ValueError(f"Modelo desconhecido: {name}. Use hybrid_cnn_lstm ou robust_hybrid.")
-
-
 def parse_args():
-    p = argparse.ArgumentParser(description="Treino híbrido AcTBeCalf (PyTorch)")
-    p.add_argument("--mode", choices=("supervised", "finetune", "fixmatch", "test"), required=True)
-    p.add_argument("--model", choices=("hybrid_cnn_lstm", "robust_hybrid"), default="robust_hybrid")
+    p = argparse.ArgumentParser(description="Hybrid Activity Recognition — experiments CLI")
+
+    # --- Mode & model ---
+    p.add_argument("--mode", choices=("supervised", "pretrain", "finetune", "fixmatch", "test"), required=True)
     p.add_argument(
-        "--labeled_parquet",
+        "--model",
         type=str,
-        default="",
-        help="Um único Parquet janelado; split interno 80/10/10 (legado).",
+        default="robust",
+        help="Encoder name: cnn_lstm | robust | patchtst (or legacy: hybrid_cnn_lstm, robust_hybrid)",
     )
     p.add_argument(
-        "--labeled_parquet_train",
-        type=str,
-        default="",
-        help="Parquet janelado de treino (usa com --labeled_parquet_test; sem vazamento de normalização).",
+        "--input_mode",
+        choices=("deep_only", "hybrid"),
+        default="hybrid",
+        help="deep_only = encoder → head; hybrid = encoder + TSFEL → fusion → head",
     )
-    p.add_argument("--labeled_parquet_test", type=str, default="", help="Parquet janelado de teste fixo.")
-    p.add_argument(
-        "--labeled_parquet_val",
-        type=str,
-        default="",
-        help="Parquet janelado de validação opcional (senão usa --val_fraction no treino).",
-    )
-    p.add_argument(
-        "--val_fraction",
-        type=float,
-        default=0.1,
-        help="Fração estratificada do treino para validação (ignorada se --labeled_parquet_val).",
-    )
-    p.add_argument("--unlabeled_parquet", type=str, default="", help="Obrigatório se mode=fixmatch")
+
+    # --- Data ---
+    p.add_argument("--labeled_parquet", type=str, default="", help="Single windowed parquet (legacy 80/10/10 split).")
+    p.add_argument("--labeled_parquet_train", type=str, default="", help="Windowed parquet for training.")
+    p.add_argument("--labeled_parquet_test", type=str, default="", help="Windowed parquet for testing.")
+    p.add_argument("--labeled_parquet_val", type=str, default="", help="Optional validation parquet.")
+    p.add_argument("--val_fraction", type=float, default=0.1, help="Stratified val fraction from train.")
+    p.add_argument("--unlabeled_parquet", type=str, default="", help="Required for fixmatch mode.")
+    p.add_argument("--pretrain_parquet", type=str, default="", help="Windowed parquet for PatchTST pretraining.")
+
+    # --- Checkpoints ---
+    p.add_argument("--checkpoint", type=str, default="", help="Resume supervised training from this checkpoint.")
+    p.add_argument("--patchtst_checkpoint", type=str, default="", help="Pretrained PatchTST checkpoint to load.")
     p.add_argument("--output_dir", type=str, default="experiments/runs")
+
+    # --- Training hyperparameters ---
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--device", type=str, default="cuda", help="cuda ou cpu")
+    p.add_argument("--device", type=str, default="cuda", help="cuda or cpu")
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--num_workers", type=int, default=2)
     p.add_argument("--epochs", type=int, default=50)
-    p.add_argument("--lr", type=float, default=None, help="Se omitido, usa default do modo")
+    p.add_argument("--lr", type=float, default=None, help="Learning rate (if omitted, uses mode default)")
     p.add_argument("--hidden_lstm", type=int, default=None)
-    p.add_argument("--checkpoint", type=str, default="", help="Checkpoint para test/finetune/fixmatch warm-start")
-    p.add_argument("--no_class_weights", action="store_true", help="Supervised: sem pesos por classe")
+    p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
+
+    # --- PatchTST-specific ---
+    p.add_argument("--patchtst_d_model", type=int, default=128)
+    p.add_argument("--patchtst_num_layers", type=int, default=3)
+    p.add_argument("--patchtst_num_heads", type=int, default=4)
+    p.add_argument("--patchtst_patch_length", type=int, default=8)
+    p.add_argument("--patchtst_patch_stride", type=int, default=8)
+    p.add_argument("--patchtst_dropout", type=float, default=0.1)
+
+    # --- Pretrain-specific ---
+    p.add_argument("--pretrain_epochs", type=int, default=100)
+    p.add_argument("--pretrain_lr", type=float, default=1e-3)
+    p.add_argument("--pretrain_mask_ratio", type=float, default=0.4)
+
+    # --- FixMatch-specific ---
     p.add_argument("--fixmatch_threshold", type=float, default=0.9)
     p.add_argument("--fixmatch_lambda", type=float, default=1.0)
     p.add_argument("--unlabeled_batch_mult", type=int, default=7)
+
     return p.parse_args()
+
+
+def _build_encoder_kwargs(args) -> dict:
+    """Collect encoder-specific kwargs from CLI args."""
+    kwargs = {}
+    if args.hidden_lstm is not None:
+        kwargs["hidden_lstm"] = args.hidden_lstm
+    # PatchTST kwargs (only used if encoder_name == "patchtst")
+    if args.model in ("patchtst",):
+        kwargs.update(
+            context_length=75,
+            d_model=args.patchtst_d_model,
+            num_heads=args.patchtst_num_heads,
+            num_layers=args.patchtst_num_layers,
+            patch_length=args.patchtst_patch_length,
+            patch_stride=args.patchtst_patch_stride,
+            dropout=args.patchtst_dropout,
+        )
+        if args.patchtst_checkpoint:
+            kwargs["pretrained_path"] = args.patchtst_checkpoint
+    return kwargs
 
 
 def _prepare_labeled_loaders(args):
     has_pair = bool(args.labeled_parquet_train) and bool(args.labeled_parquet_test)
     has_single = bool(args.labeled_parquet)
     if has_pair and has_single:
-        raise SystemExit("Use apenas --labeled_parquet OU o par train/test, não ambos.")
+        raise SystemExit("Use --labeled_parquet OR --labeled_parquet_train/test, not both.")
     if has_pair:
         val_path = args.labeled_parquet_val.strip() or None
         return prepare_train_val_test_loaders(
@@ -112,8 +143,8 @@ def _prepare_labeled_loaders(args):
             random_state=args.seed,
         )
     raise SystemExit(
-        "Indique --labeled_parquet (split interno) ou "
-        "--labeled_parquet_train e --labeled_parquet_test (teste fixo)."
+        "Provide --labeled_parquet (internal split) or "
+        "--labeled_parquet_train and --labeled_parquet_test (fixed test set)."
     )
 
 
@@ -122,32 +153,82 @@ def main():
     args = parse_args()
     set_seed(args.seed)
 
-    use_cuda = args.device.startswith("cuda") and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
-    print(f"device={device}")
-
     out = Path(args.output_dir)
     out.mkdir(parents=True, exist_ok=True)
+    setup_logging(out)
 
+    use_cuda = args.device.startswith("cuda") and torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+    logger.info("device=%s", device)
+
+    # ---- Pretrain mode ----
+    if args.mode == "pretrain":
+        if not args.pretrain_parquet:
+            raise SystemExit("pretrain mode requires --pretrain_parquet")
+
+        from hybrid_activity_recognition.data.pretrain_dataset import prepare_pretrain_dataloader
+        from hybrid_activity_recognition.training.pretrain_trainer import PretrainTrainer
+
+        train_dl, _, _ = prepare_pretrain_dataloader(
+            args.pretrain_parquet,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+        )
+        trainer = PretrainTrainer(device, out)
+        resume = args.checkpoint if args.checkpoint else None
+        best_path = trainer.train(
+            train_dl,
+            context_length=75,
+            patch_length=args.patchtst_patch_length,
+            patch_stride=args.patchtst_patch_stride,
+            d_model=args.patchtst_d_model,
+            num_heads=args.patchtst_num_heads,
+            num_layers=args.patchtst_num_layers,
+            dropout=args.patchtst_dropout,
+            mask_ratio=args.pretrain_mask_ratio,
+            epochs=args.pretrain_epochs,
+            lr=args.pretrain_lr,
+            resume_from=resume,
+        )
+        logger.info("Pretraining complete. Best checkpoint: %s", best_path)
+        return
+
+    # ---- Test mode ----
     if args.mode == "test":
         train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = _prepare_labeled_loaders(args)
-        ckpt = args.checkpoint or str(out / "finetuned_best.pt")
-        model = build_model(args.model, num_classes, n_feats, args.hidden_lstm).to(device)
+        encoder_kwargs = _build_encoder_kwargs(args)
+        model = build_hybrid_model(
+            encoder_name=args.model,
+            input_mode=args.input_mode,
+            num_classes=num_classes,
+            n_tsfel_feats=n_feats,
+            **encoder_kwargs,
+        ).to(device)
+        ckpt = args.checkpoint or str(out / "best.pt")
         trainer = Trainer(model, device, out)
         res = trainer.evaluate(test_dl, ckpt)
         metrics = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        print(f"checkpoint={ckpt}")
-        print(f"test accuracy={metrics['accuracy']:.4f} macro_f1={metrics['f1_macro']:.4f}")
+        logger.info("checkpoint=%s", ckpt)
+        logger.info("test accuracy=%.4f macro_f1=%.4f", metrics["accuracy"], metrics["f1_macro"])
         return
 
+    # ---- Supervised / Finetune / FixMatch ----
     train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = _prepare_labeled_loaders(args)
-    print(f"classes={len(class_names)} n_tsfel_feats={n_feats}")
+    logger.info("classes=%d n_tsfel_feats=%d", len(class_names), n_feats)
 
-    model = build_model(args.model, num_classes, n_feats, args.hidden_lstm).to(device)
+    encoder_kwargs = _build_encoder_kwargs(args)
+    model = build_hybrid_model(
+        encoder_name=args.model,
+        input_mode=args.input_mode,
+        num_classes=num_classes,
+        n_tsfel_feats=n_feats,
+        **encoder_kwargs,
+    ).to(device)
     trainer = Trainer(model, device, out)
 
     if args.mode == "supervised":
         lr = args.lr if args.lr is not None else 1e-3
+        resume = args.checkpoint if args.checkpoint else None
         trainer.train_supervised(
             train_dl,
             val_dl,
@@ -155,27 +236,28 @@ def main():
             epochs=args.epochs,
             lr=lr,
             use_class_weights=not args.no_class_weights,
+            resume_from=resume,
         )
-        res = trainer.evaluate(test_dl, out / "supervised_best.pt")
+        res = trainer.evaluate(test_dl, out / "best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        print(f"test: acc={m['accuracy']:.4f} macro_f1={m['f1_macro']:.4f}")
+        logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
         return
 
     if args.mode == "finetune":
-        load_from = args.checkpoint or (out / "supervised_best.pt")
+        load_from = args.checkpoint or (out / "best.pt")
         lr = args.lr if args.lr is not None else 1e-4
         if trainer.finetune(
             train_dl, val_dl, load_path=load_from, epochs=args.epochs, lr=lr
         ) is None:
-            raise SystemExit(f"Fine-tune cancelado: não achou checkpoint em {load_from}")
+            raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
         res = trainer.evaluate(test_dl, out / "finetuned_best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        print(f"test: acc={m['accuracy']:.4f} macro_f1={m['f1_macro']:.4f}")
+        logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
         return
 
     if args.mode == "fixmatch":
         if not args.unlabeled_parquet:
-            raise SystemExit("fixmatch exige --unlabeled_parquet")
+            raise SystemExit("fixmatch requires --unlabeled_parquet")
         ul = prepare_unlabeled_dataloader(
             args.unlabeled_parquet,
             batch_size=args.batch_size,
@@ -196,7 +278,7 @@ def main():
         )
         res = trainer.evaluate(test_dl, out / "fixmatch_best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        print(f"test: acc={m['accuracy']:.4f} macro_f1={m['f1_macro']:.4f}")
+        logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
         return
 
 

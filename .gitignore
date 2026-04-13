@@ -1,4 +1,5 @@
 .venv/
+venv/
 __pycache__/
 *.pyc
 *.parquets
@@ -10,3 +11,4 @@ __pycache__/
 dataset/*.csv
 dataset/*.parquet
 
+experiments/*/

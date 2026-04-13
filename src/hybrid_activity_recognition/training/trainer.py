@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import os
 from pathlib import Path
 
@@ -11,6 +12,10 @@ from torch.utils.data import DataLoader
 
 from hybrid_activity_recognition.training.augment import SensorFixMatchAugment
 from hybrid_activity_recognition.training.loss import balanced_class_weights, supervised_loss_fn
+
+logger = logging.getLogger(__name__)
+
+
 def _cycle(iterable):
     while True:
         for x in iterable:
@@ -18,7 +23,7 @@ def _cycle(iterable):
 
 
 class Trainer:
-    """Loops de treino supervisionado, fine-tune e FixMatch; avaliação no val/test."""
+    """Loops de treino supervisionado, fine-tune e FixMatch; avaliacao no val/test."""
 
     def __init__(self, model: nn.Module, device: torch.device, output_dir: str | Path):
         self.model = model
@@ -39,7 +44,8 @@ class Trainer:
         scheduler_factor: float = 0.3,
         early_stopping_patience: int = 25,
         grad_clip: float = 1.0,
-        checkpoint_name: str = "supervised_best.pt",
+        checkpoint_name: str = "best.pt",
+        resume_from: str | Path | None = None,
     ) -> nn.Module:
         labels = train_dl.dataset.labels.cpu().numpy()
         cw = None
@@ -54,9 +60,22 @@ class Trainer:
         best_wts = copy.deepcopy(self.model.state_dict())
         best_acc = 0.0
         stall = 0
+        start_epoch = 0
         ckpt_path = self.output_dir / checkpoint_name
 
-        for epoch in range(epochs):
+        # Resume from checkpoint
+        if resume_from is not None and Path(resume_from).is_file():
+            ckpt = torch.load(resume_from, map_location=self.device)
+            self.model.load_state_dict(ckpt["model_state_dict"])
+            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
+            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
+            best_acc = ckpt["best_acc"]
+            best_wts = ckpt["best_wts"]
+            stall = ckpt["stall"]
+            start_epoch = ckpt["epoch"] + 1
+            logger.info("Resuming training from epoch %d (best_acc=%.2f%%)", start_epoch, best_acc)
+
+        for epoch in range(start_epoch, epochs):
             self.model.train()
             train_loss = 0.0
             correct = 0
@@ -90,9 +109,9 @@ class Trainer:
             avg_val_loss = val_loss / len(val_dl.dataset)
             val_acc = 100.0 * v_correct / v_total
 
-            print(
-                f"Ep {epoch + 1:03d}/{epochs} | train_loss={avg_train_loss:.4f} acc={train_acc:.2f}% | "
-                f"val_loss={avg_val_loss:.4f} val_acc={val_acc:.2f}%"
+            logger.info(
+                "Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%%",
+                epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
             )
             scheduler.step(avg_val_loss)
 
@@ -104,8 +123,22 @@ class Trainer:
             else:
                 stall += 1
                 if stall >= early_stopping_patience:
-                    print(f"Early stopping (sem melhoria por {early_stopping_patience} épocas).")
+                    logger.info("Early stopping (no improvement for %d epochs).", early_stopping_patience)
                     break
+
+            # Periodic checkpoint for resume
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model_state_dict": self.model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict(),
+                    "best_acc": best_acc,
+                    "best_wts": best_wts,
+                    "stall": stall,
+                },
+                self.output_dir / "checkpoint.pt",
+            )
 
         self.model.load_state_dict(best_wts)
         return self.model
@@ -125,7 +158,7 @@ class Trainer:
     ) -> nn.Module | None:
         load_path = Path(load_path)
         if not load_path.is_file():
-            print(f"Checkpoint não encontrado: {load_path}")
+            logger.warning("Checkpoint not found: %s", load_path)
             return None
         self.model.load_state_dict(torch.load(load_path, map_location=self.device))
 
@@ -169,9 +202,9 @@ class Trainer:
                     v_total += y.size(0)
             avg_val_loss = val_loss / len(val_dl.dataset)
             val_acc = 100.0 * v_correct / v_total
-            print(
-                f"Finetune Ep {epoch + 1:03d}/{epochs} | train_loss={avg_train_loss:.4f} acc={train_acc:.2f}% | "
-                f"val_loss={avg_val_loss:.4f} val_acc={val_acc:.2f}%"
+            logger.info(
+                "Finetune Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%%",
+                epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
             )
             scheduler.step(avg_val_loss)
             if val_acc > best_acc:
@@ -259,10 +292,10 @@ class Trainer:
                     v_n += y.size(0)
             val_acc = 100.0 * v_ok / max(1, v_n)
             steps = max(1, totals["steps"])
-            print(
-                f"FixMatch Ep {epoch + 1:03d}/{epochs} | loss={totals['loss'] / steps:.4f} "
-                f"(sup={totals['s'] / steps:.4f} unsup={totals['u'] / steps:.4f}) "
-                f"| mask~{totals['mask'] / steps:.2%} | val_acc={val_acc:.2f}%"
+            logger.info(
+                "FixMatch Ep %03d/%d | loss=%.4f (sup=%.4f unsup=%.4f) | mask~%.2f%% | val_acc=%.2f%%",
+                epoch + 1, epochs, totals["loss"] / steps, totals["s"] / steps,
+                totals["u"] / steps, 100.0 * totals["mask"] / steps, val_acc,
             )
             if val_acc > best_acc:
                 best_acc = val_acc

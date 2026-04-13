@@ -1,42 +1,23 @@
-import torch.nn as nn
+# TO-DO: remove, it is a legacy file
+# Use models.modular.build_hybrid_model(encoder_name="robust", input_mode="hybrid") instead.
 
-from hybrid_activity_recognition.layers.fusion import ConcatFusion
-from hybrid_activity_recognition.layers.heads import MLPClassificationHead
-from hybrid_activity_recognition.layers.signal_branch import RobustCNNLSTMSignalBranch
-from hybrid_activity_recognition.layers.tsfel_branch import TsfelMLPBranch
+from __future__ import annotations
 
-
-def _init_weights(module: nn.Module):
-    if isinstance(module, nn.Linear):
-        nn.init.kaiming_normal_(module.weight)
-        if module.bias is not None:
-            nn.init.constant_(module.bias, 0)
-    elif isinstance(module, nn.Conv1d):
-        nn.init.kaiming_normal_(module.weight)
-    elif isinstance(module, nn.BatchNorm1d):
-        nn.init.constant_(module.weight, 1)
-        nn.init.constant_(module.bias, 0)
+from hybrid_activity_recognition.models.modular import build_hybrid_model
 
 
-class RobustHybridModel(nn.Module):
-    """
-    Variante mais profunda com CNN mais funda e LSTM de 1 camada;
-    inicialização Kaiming nas lineares/convs.
-    """
+class RobustHybridModel:
+    """Legacy wrapper — delegates to the modular architecture."""
 
-    def __init__(self, num_classes: int, n_features_tsfel: int, hidden_lstm: int = 128):
-        super().__init__()
-        self.signal_branch = RobustCNNLSTMSignalBranch(hidden_lstm=hidden_lstm)
-        self.tsfel_branch = TsfelMLPBranch(n_features_tsfel, hidden_dim=128, dropout=0.5)
-        self.fusion = ConcatFusion()
-        fusion_dim = (hidden_lstm * 2) + 128
-        self.classifier_head = MLPClassificationHead(
-            fusion_dim, hidden_dim=128, num_classes=num_classes, dropout=0.5
+    def __new__(cls, num_classes: int, n_features_tsfel: int, hidden_lstm: int = 128):
+        return build_hybrid_model(
+            encoder_name="robust",
+            input_mode="hybrid",
+            num_classes=num_classes,
+            n_tsfel_feats=n_features_tsfel,
+            head_hidden_dim=128,
+            head_dropout=0.5,
+            tsfel_hidden_dim=128,
+            tsfel_dropout=0.5,
+            hidden_lstm=hidden_lstm,
         )
-        self.apply(_init_weights)
-
-    def forward(self, x_signal, x_features):
-        z_sig = self.signal_branch(x_signal)
-        z_ts = self.tsfel_branch(x_features)
-        z = self.fusion(z_sig, z_ts)
-        return self.classifier_head(z)
