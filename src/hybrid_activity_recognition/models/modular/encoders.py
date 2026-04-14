@@ -175,3 +175,22 @@ class PatchTSTEncoder(SignalEncoder):
             if k.startswith("model.")
         }
         self._backbone.load_state_dict(encoder_state, strict=False)
+
+
+class NullSignalEncoder(SignalEncoder):
+    """No-op encoder for TSFEL-only baselines.
+
+    Returns a zero embedding; intended to be ignored by the model forward.
+    """
+
+    def __init__(self, output_dim: int = 1):
+        super().__init__()
+        self._output_dim = output_dim
+
+    @property
+    def output_dim(self) -> int:
+        return self._output_dim
+
+    def forward(self, x_signal: Tensor) -> Tensor:
+        batch = x_signal.shape[0]
+        return x_signal.new_zeros((batch, self._output_dim))

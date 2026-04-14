@@ -27,6 +27,9 @@ bash "${DIR}/run_patchtst.sh"
 # TSFEL baseline
 bash "${DIR}/run_tsfel_baseline.sh"
 
+# TSFEL + MLP head baseline
+bash "${DIR}/run_tsfel_mlp.sh"
+
 echo ""
 echo "=== Smoke test complete: $(date) ==="
 echo "Check experiments/ for DONE markers."

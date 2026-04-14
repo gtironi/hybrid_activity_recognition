@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from hybrid_activity_recognition.models.modular.encoders import (
     CNNLSTMEncoder,
+    NullSignalEncoder,
     RobustCNNLSTMEncoder,
 )
 from hybrid_activity_recognition.models.modular.fusion import ConcatFusion
@@ -51,9 +52,9 @@ def build_hybrid_model(
     Parameters
     ----------
     encoder_name : str
-        ``"cnn_lstm"`` | ``"robust"`` | ``"patchtst"`` (or legacy names).
+        ``"cnn_lstm"`` | ``"robust"`` | ``"patchtst"`` | ``"tsfel_mlp"`` (or legacy names).
     input_mode : str
-        ``"deep_only"`` or ``"hybrid"``.
+        ``"deep_only"`` | ``"hybrid"`` | ``"tsfel_only"``.
     num_classes : int
         Number of output classes.
     n_tsfel_feats : int
@@ -74,7 +75,11 @@ def build_hybrid_model(
         encoder_name, input_mode = _LEGACY_MAP[encoder_name]
 
     # Build encoder
-    if encoder_name == "patchtst":
+    if encoder_name == "tsfel_mlp":
+        if input_mode != "tsfel_only":
+            raise ValueError("tsfel_mlp requires input_mode='tsfel_only'.")
+        encoder = NullSignalEncoder()
+    elif encoder_name == "patchtst":
         from hybrid_activity_recognition.models.modular.encoders import PatchTSTEncoder
 
         encoder = PatchTSTEncoder(**encoder_kwargs)
@@ -83,7 +88,7 @@ def build_hybrid_model(
     else:
         raise ValueError(
             f"Unknown encoder: {encoder_name!r}. "
-            f"Available: {sorted(list(_ENCODER_REGISTRY) + ['patchtst'])}"
+            f"Available: {sorted(list(_ENCODER_REGISTRY) + ['patchtst', 'tsfel_mlp'])}"
         )
 
     # Build optional TSFEL branch + fusion
@@ -94,10 +99,16 @@ def build_hybrid_model(
         tsfel_branch = MLPTsfelBranch(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
         fusion = ConcatFusion(encoder.output_dim, tsfel_branch.output_dim)
         head_in_dim = fusion.output_dim
+    elif input_mode == "tsfel_only":
+        tsfel_hidden = tsfel_hidden_dim if tsfel_hidden_dim is not None else n_tsfel_feats
+        tsfel_branch = MLPTsfelBranch(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
+        head_in_dim = tsfel_branch.output_dim
     elif input_mode == "deep_only":
         head_in_dim = encoder.output_dim
     else:
-        raise ValueError(f"Unknown input_mode: {input_mode!r}. Use 'deep_only' or 'hybrid'.")
+        raise ValueError(
+            f"Unknown input_mode: {input_mode!r}. Use 'deep_only', 'hybrid', or 'tsfel_only'."
+        )
 
     head = MLPHead(head_in_dim, head_hidden_dim, num_classes, dropout=head_dropout)
 

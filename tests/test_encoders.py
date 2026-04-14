@@ -63,3 +63,13 @@ def test_patchtst_encoder_shape():
     out = enc(x)
     assert out.shape == (B, enc.output_dim)
     assert enc.output_dim == 64
+
+
+def test_null_signal_encoder_shape():
+    from hybrid_activity_recognition.models.modular.encoders import NullSignalEncoder
+
+    enc = NullSignalEncoder(output_dim=1)
+    x = torch.randn(B, 3, T)
+    out = enc(x)
+    assert out.shape == (B, 1)
+    assert enc.output_dim == 1

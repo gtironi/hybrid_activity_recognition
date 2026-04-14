@@ -17,6 +17,7 @@ bash "${DIR}/run_cnn_lstm.sh"
 bash "${DIR}/run_robust.sh"
 bash "${DIR}/run_patchtst.sh"
 bash "${DIR}/run_tsfel_baseline.sh"
+bash "${DIR}/run_tsfel_mlp.sh"
 
 echo ""
 echo "=== All experiments complete: $(date) ==="

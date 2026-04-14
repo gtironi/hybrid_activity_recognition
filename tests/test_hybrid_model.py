@@ -92,3 +92,27 @@ def test_legacy_robust_hybrid():
 
     model = RobustHybridModel(num_classes=N_CLASSES, n_features_tsfel=N_FEATS)
     _check_forward(model)
+
+
+def test_tsfel_only_factory_forward():
+    from hybrid_activity_recognition.models.modular import build_hybrid_model
+
+    model = build_hybrid_model(
+        encoder_name="tsfel_mlp",
+        input_mode="tsfel_only",
+        num_classes=N_CLASSES,
+        n_tsfel_feats=N_FEATS,
+    )
+    _check_forward(model)
+
+
+def test_tsfel_only_factory_gradients():
+    from hybrid_activity_recognition.models.modular import build_hybrid_model
+
+    model = build_hybrid_model(
+        encoder_name="tsfel_mlp",
+        input_mode="tsfel_only",
+        num_classes=N_CLASSES,
+        n_tsfel_feats=N_FEATS,
+    )
+    _check_gradients(model)

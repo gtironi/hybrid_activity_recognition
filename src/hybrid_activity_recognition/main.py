@@ -44,13 +44,19 @@ def parse_args():
         "--model",
         type=str,
         default="robust",
-        help="Encoder name: cnn_lstm | robust | patchtst (or legacy: hybrid_cnn_lstm, robust_hybrid)",
+        help=(
+            "Encoder name: cnn_lstm | robust | patchtst | tsfel_mlp "
+            "(or legacy: hybrid_cnn_lstm, robust_hybrid)"
+        ),
     )
     p.add_argument(
         "--input_mode",
-        choices=("deep_only", "hybrid"),
+        choices=("deep_only", "hybrid", "tsfel_only"),
         default="hybrid",
-        help="deep_only = encoder → head; hybrid = encoder + TSFEL → fusion → head",
+        help=(
+            "deep_only = encoder → head; hybrid = encoder + TSFEL → fusion → head; "
+            "tsfel_only = TSFEL → head"
+        ),
     )
 
     # --- Data ---
