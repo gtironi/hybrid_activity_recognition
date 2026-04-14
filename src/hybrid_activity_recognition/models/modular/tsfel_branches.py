@@ -1,35 +1,30 @@
 """Concrete TsfelBranch implementations.
 
-Each branch projects pre-computed TSFEL features (B, K) to (B, output_dim).
+Each branch consumes pre-computed TSFEL features (B, K) and returns an
+embedding with shape (B, output_dim).
 """
 
 from __future__ import annotations
 
-import torch.nn as nn
 from torch import Tensor
 
 from hybrid_activity_recognition.models.modular.base import TsfelBranch
 
 
 class MLPTsfelBranch(TsfelBranch):
-    """Single hidden-layer MLP projection: Linear -> BN -> ReLU -> Dropout.
+    """Identity TSFEL branch.
 
-    Migrated from ``layers.tsfel_branch.TsfelMLPBranch``.
+    Keeps the public class name for compatibility, but returns the input tensor
+    unchanged so TSFEL features flow directly into fusion or the head.
     """
 
     def __init__(self, in_features: int, hidden_dim: int, dropout: float = 0.3):
         super().__init__()
-        self._output_dim = hidden_dim
-        self.net = nn.Sequential(
-            nn.Linear(in_features, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-        )
+        self._output_dim = in_features
 
     @property
     def output_dim(self) -> int:
         return self._output_dim
 
     def forward(self, x_features: Tensor) -> Tensor:
-        return self.net(x_features)
+        return x_features

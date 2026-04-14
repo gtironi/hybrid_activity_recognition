@@ -11,8 +11,8 @@ def test_mlp_tsfel_branch():
     branch = MLPTsfelBranch(in_features=120, hidden_dim=64)
     x = torch.randn(B, 120)
     out = branch(x)
-    assert out.shape == (B, 64)
-    assert branch.output_dim == 64
+    assert out.shape == (B, 120)
+    assert branch.output_dim == 120
 
 
 def test_concat_fusion():
