@@ -50,9 +50,43 @@ pip install -r requirements.txt
 
 ## Quick Start
 
+### Default Flow (Recommended)
+
+Run this sequence end-to-end:
+
+```bash
+# 0) Environment
+source venv/bin/activate
+export PYTHONPATH=src
+
+# 1) Raw CSV -> train/test (80/20 stratified by behaviour)
+python scripts/dataset_processing.py \
+  --csv dataset/AcTBeCalf.csv \
+  --out-dir dataset/processed \
+  --split-by behavior \
+  --behavior-column behaviour \
+  --test-fraction 0.2 \
+  --random-state 42
+
+# 2) Window train (discover TSFEL top-K + save manifest)
+python scripts/prepare_windowed_parquet.py \
+  --input dataset/processed/AcTBeCalf/train.parquet \
+  --output dataset/processed/AcTBeCalf/windowed_train.parquet \
+  --feature-manifest-out dataset/processed/AcTBeCalf/tsfel_feature_manifest.json
+
+# 3) Window test (apply same TSFEL columns from manifest)
+python scripts/prepare_windowed_parquet.py \
+  --input dataset/processed/AcTBeCalf/test.parquet \
+  --output dataset/processed/AcTBeCalf/windowed_test.parquet \
+  --feature-manifest-in dataset/processed/AcTBeCalf/tsfel_feature_manifest.json
+
+# 4) Run full experimental grid
+bash scripts/experiments/run_all.sh
+```
+
 ### 1. Prepare Data
 
-**Step 1a: Split raw CSV by subject (train/test split)**
+**Step 1a: Split raw CSV by behavior (stratified train/test split)**
 
 ```bash
 python scripts/dataset_processing.py \
@@ -61,6 +95,7 @@ python scripts/dataset_processing.py \
 ```
 
 Output: `dataset/processed/AcTBeCalf/{train,test}.parquet` (long-form time series).
+Default split: 80/20 stratified by `behaviour`. Use `--split-by subject` if you need the old cow-level split.
 
 **Step 1b: Window + extract TSFEL features**
 
@@ -198,13 +233,21 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main --help
 
 **Pipeline:**
 
-1. **Subject-based split** (no leakage):
+1. **Train/test split** (default: stratified by behavior):
    ```bash
    python scripts/dataset_processing.py \
      --csv dataset/AcTBeCalf.csv \
-     --subject-column calfId \
-     --test-subjects 1329 1343 1353 1357 1372 \
      --out-dir dataset/processed
+   ```
+
+   To force split by subject:
+   ```bash
+   python scripts/dataset_processing.py \
+     --csv dataset/AcTBeCalf.csv \
+     --out-dir dataset/processed \
+     --split-by subject \
+     --subject-column calfId \
+     --test-subjects 1329 1343 1353 1357 1372
    ```
 
 2. **Windowing + TSFEL** (discover on train, apply on test):
@@ -305,7 +348,7 @@ bash scripts/experiments/smoke_test.sh
 
 ### Full Experimental Grid
 
-Runs all experiments with default hyperparameters (50 epochs, batch 64):
+Runs all experiments with default hyperparameters (150 epochs, batch 256):
 
 ```bash
 bash scripts/experiments/run_all.sh
@@ -480,7 +523,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 - **Seed control:** `--seed` sets `random`, `numpy`, and `torch` seeds.
 - **Deterministic ops:** `CUBLAS_WORKSPACE_CONFIG=:4096:8` set by `utils/repro.py`.
-- **Data splits:** Subject-based (no temporal leakage between train/test).
+- **Data splits:** Default is stratified 80/20 by behavior. Subject-based split is optional via `--split-by subject`.
 - **Normalization:** Statistics computed only on training set, applied to val/test.
 - **TSFEL features:** Manifest ensures test uses the same features as training.
 

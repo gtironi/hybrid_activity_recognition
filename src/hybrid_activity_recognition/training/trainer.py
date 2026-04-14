@@ -42,7 +42,7 @@ class Trainer:
         use_class_weights: bool = True,
         scheduler_patience: int = 5,
         scheduler_factor: float = 0.3,
-        early_stopping_patience: int = 25,
+        early_stopping_patience: int = 10,
         grad_clip: float = 1.0,
         checkpoint_name: str = "best.pt",
         resume_from: str | Path | None = None,
@@ -65,7 +65,7 @@ class Trainer:
 
         # Resume from checkpoint
         if resume_from is not None and Path(resume_from).is_file():
-            ckpt = torch.load(resume_from, map_location=self.device)
+            ckpt = torch.load(resume_from, map_location=self.device, weights_only=True)
             self.model.load_state_dict(ckpt["model_state_dict"])
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
             scheduler.load_state_dict(ckpt["scheduler_state_dict"])
@@ -160,7 +160,7 @@ class Trainer:
         if not load_path.is_file():
             logger.warning("Checkpoint not found: %s", load_path)
             return None
-        self.model.load_state_dict(torch.load(load_path, map_location=self.device))
+        self.model.load_state_dict(torch.load(load_path, map_location=self.device, weights_only=True))
 
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
@@ -228,7 +228,7 @@ class Trainer:
         checkpoint_name: str = "fixmatch_best.pt",
     ) -> nn.Module:
         if finetune_checkpoint and Path(finetune_checkpoint).is_file():
-            self.model.load_state_dict(torch.load(finetune_checkpoint, map_location=self.device))
+            self.model.load_state_dict(torch.load(finetune_checkpoint, map_location=self.device, weights_only=True))
 
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         augmenter = SensorFixMatchAugment(self.device)
@@ -305,7 +305,7 @@ class Trainer:
 
     def evaluate(self, data_loader: DataLoader, checkpoint: str | Path | None = None) -> dict:
         if checkpoint and Path(checkpoint).is_file():
-            self.model.load_state_dict(torch.load(checkpoint, map_location=self.device))
+            self.model.load_state_dict(torch.load(checkpoint, map_location=self.device, weights_only=True))
         self.model.eval()
         ys, preds = [], []
         with torch.no_grad():

@@ -85,7 +85,7 @@ class PretrainTrainer:
         # Resume
         ckpt_path = self.output_dir / "checkpoint.pt"
         if resume_from is not None and Path(resume_from).is_file():
-            ckpt = torch.load(resume_from, map_location=self.device)
+            ckpt = torch.load(resume_from, map_location=self.device, weights_only=True)
             model.load_state_dict(ckpt["model_state_dict"])
             optimizer.load_state_dict(ckpt["optimizer_state_dict"])
             scheduler.load_state_dict(ckpt["scheduler_state_dict"])
