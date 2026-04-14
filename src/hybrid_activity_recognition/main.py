@@ -60,7 +60,6 @@ def parse_args():
     )
 
     # --- Data ---
-    p.add_argument("--labeled_parquet", type=str, default="", help="Single windowed parquet (legacy 80/10/10 split).")
     p.add_argument("--labeled_parquet_train", type=str, default="", help="Windowed parquet for training.")
     p.add_argument("--labeled_parquet_test", type=str, default="", help="Windowed parquet for testing.")
     p.add_argument("--labeled_parquet_val", type=str, default="", help="Optional validation parquet.")
@@ -126,31 +125,19 @@ def _build_encoder_kwargs(args) -> dict:
 
 
 def _prepare_labeled_loaders(args):
-    has_pair = bool(args.labeled_parquet_train) and bool(args.labeled_parquet_test)
-    has_single = bool(args.labeled_parquet)
-    if has_pair and has_single:
-        raise SystemExit("Use --labeled_parquet OR --labeled_parquet_train/test, not both.")
-    if has_pair:
-        val_path = args.labeled_parquet_val.strip() or None
-        return prepare_train_val_test_loaders(
-            args.labeled_parquet_train,
-            args.labeled_parquet_test,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            random_state=args.seed,
-            val_fraction=args.val_fraction,
-            parquet_val_path=val_path,
+    if not (args.labeled_parquet_train and args.labeled_parquet_test):
+        raise SystemExit(
+            "Provide --labeled_parquet_train and --labeled_parquet_test (fixed test set)."
         )
-    if has_single:
-        return prepare_supervised_dataloaders(
-            args.labeled_parquet,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            random_state=args.seed,
-        )
-    raise SystemExit(
-        "Provide --labeled_parquet (internal split) or "
-        "--labeled_parquet_train and --labeled_parquet_test (fixed test set)."
+    val_path = args.labeled_parquet_val.strip() or None
+    return prepare_train_val_test_loaders(
+        args.labeled_parquet_train,
+        args.labeled_parquet_test,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        random_state=args.seed,
+        val_fraction=args.val_fraction,
+        parquet_val_path=val_path,
     )
 
 
