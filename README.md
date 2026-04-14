@@ -512,12 +512,6 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 ---
 
-## License
-
-[Specify license here, e.g., MIT, Apache 2.0, or Academic Use Only]
-
----
-
 ## Contact
 
 [Gustavo Tironi](https://github.com/gtironi) · [João Gabriel Machado](https://github.com/jgabrielsg)
