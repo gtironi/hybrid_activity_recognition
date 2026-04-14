@@ -64,7 +64,7 @@ def prepare_train_val_test_loaders(
     batch_size: int = 64,
     num_workers: int = 2,
     random_state: int = 42,
-    val_fraction: float = 0.1,
+    val_fraction: float = 0.05,
     parquet_val_path: str | None = None,
     drop_rare_classes_min_count: int = 2,
 ) -> tuple[DataLoader, DataLoader, DataLoader, np.ndarray, int, int, LabelEncoder]:

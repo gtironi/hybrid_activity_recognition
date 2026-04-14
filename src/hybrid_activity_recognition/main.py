@@ -64,7 +64,7 @@ def parse_args():
     p.add_argument("--labeled_parquet_train", type=str, default="", help="Windowed parquet for training.")
     p.add_argument("--labeled_parquet_test", type=str, default="", help="Windowed parquet for testing.")
     p.add_argument("--labeled_parquet_val", type=str, default="", help="Optional validation parquet.")
-    p.add_argument("--val_fraction", type=float, default=0.1, help="Stratified val fraction from train.")
+    p.add_argument("--val_fraction", type=float, default=0.05, help="Stratified val fraction from train.")
     p.add_argument("--unlabeled_parquet", type=str, default="", help="Required for fixmatch mode.")
     p.add_argument("--pretrain_parquet", type=str, default="", help="Windowed parquet for PatchTST pretraining.")
 

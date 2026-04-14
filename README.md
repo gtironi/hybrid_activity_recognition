@@ -16,16 +16,17 @@ x_signal (B, C, T)  →  [SignalEncoder]  ────┐
 x_features (B, K)   →  [TsfelBranch]   ────┘
 ```
 
-**Two operational modes:**
+**Three operational modes:**
 - **`deep_only`**: Encoder → Head (TSFEL branch disabled)
 - **`hybrid`**: Encoder + TSFEL → Fusion → Head (default)
+- **`tsfel_only`**: TSFEL branch → Head (signal ignored)
 
 **Three encoder families:**
 - `cnn_lstm`: 2 Conv1D blocks + 2-layer BiLSTM
 - `robust`: 3 Conv1D blocks + 1-layer BiLSTM (deeper CNN, Kaiming init)
 - `patchtst`: Transformer with patch-based tokenization (HuggingFace implementation)
 
-**Experimental grid:** 3 encoders × 2 modes = 6 deep learning experiments + 1 TSFEL-only baseline (Random Forest).
+**Experimental grid:** 3 encoders × 2 modes = 6 deep learning experiments + 2 TSFEL-only baselines (Random Forest and TSFEL+MLP).
 
 ---
 
@@ -168,7 +169,7 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
 bash scripts/experiments/smoke_test.sh
 ```
 
-**Full grid (50 epochs, all 7 experiments):**
+**Full grid (50 epochs, all 8 experiments):**
 
 ```bash
 bash scripts/experiments/run_all.sh
@@ -205,8 +206,8 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main --help
 | Argument | Values | Description |
 |----------|--------|-------------|
 | `--mode` | `supervised`, `pretrain`, `finetune`, `fixmatch`, `test` | Training mode |
-| `--model` | `cnn_lstm`, `robust`, `patchtst` | Encoder family |
-| `--input_mode` | `deep_only`, `hybrid` | Architecture mode (default: `hybrid`) |
+| `--model` | `cnn_lstm`, `robust`, `patchtst`, `tsfel_mlp` | Encoder family |
+| `--input_mode` | `deep_only`, `hybrid`, `tsfel_only` | Architecture mode (default: `hybrid`) |
 | `--labeled_parquet_train` | path | Windowed training parquet |
 | `--labeled_parquet_test` | path | Windowed test parquet |
 | `--checkpoint` | path | Resume from this checkpoint (optional) |

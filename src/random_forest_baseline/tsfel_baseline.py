@@ -20,7 +20,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.feature_selection import SelectKBest, f_classif
 from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
@@ -40,7 +39,6 @@ def main():
     p = argparse.ArgumentParser(description="TSFEL baseline (SelectKBest + RandomForest)")
     p.add_argument("--train", required=True, help="Windowed parquet for training")
     p.add_argument("--test", required=True, help="Windowed parquet for testing")
-    p.add_argument("--k", type=int, default=50, help="Number of features to select")
     p.add_argument("--n_estimators", type=int, default=200, help="RandomForest n_estimators")
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--output_dir", type=str, default="experiments/tsfel_baseline")
@@ -85,14 +83,7 @@ def main():
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
 
-    # Feature selection
-    k = min(args.k, X_train.shape[1])
-    selector = SelectKBest(f_classif, k=k)
-    X_train = selector.fit_transform(X_train, y_train)
-    X_test = selector.transform(X_test)
-
-    selected = [feat_cols[i] for i in selector.get_support(indices=True)]
-    print(f"Selected {len(selected)} features out of {len(feat_cols)}")
+    print(f"Using all {len(feat_cols)} TSFEL features")
 
     # Train
     clf = RandomForestClassifier(
@@ -118,9 +109,8 @@ def main():
         "accuracy": acc,
         "f1_macro": f1_macro,
         "f1_weighted": f1_weighted,
-        "k": k,
         "n_estimators": args.n_estimators,
-        "selected_features": selected,
+        "n_features": len(feat_cols),
         "class_names": le.classes_.tolist(),
     }
     with open(out / "results.json", "w") as f:
