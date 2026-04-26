@@ -61,7 +61,8 @@ class PatchTSTHFClassificationHead(ClassificationHead):
         # Import here to avoid transformers dependency for non-PatchTST runs
         from transformers.models.patchtst.modeling_patchtst import PatchTSTClassificationHead
 
-        self._head = PatchTSTClassificationHead(config=config, num_labels=num_classes)
+        config.num_targets = num_classes
+        self._head = PatchTSTClassificationHead(config=config)
 
     def forward(self, z: Tensor) -> Tensor:
         return self._head(z)
