@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from hybrid_activity_recognition.models.modular.base import SignalEncoder
+from hybrid_activity_recognition.models.base import SignalEncoder
 
 
 class CNNLSTMEncoder(SignalEncoder):

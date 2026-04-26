@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from torch import Tensor
 
-from hybrid_activity_recognition.models.modular.base import TsfelBranch
+from hybrid_activity_recognition.models.base import TsfelBranch
 
 
 class MLPTsfelBranch(TsfelBranch):

@@ -2,7 +2,7 @@
 
 Usage::
 
-    from hybrid_activity_recognition.models.modular import build_hybrid_model
+    from hybrid_activity_recognition.models import build_hybrid_model
 
     model = build_hybrid_model(
         encoder_name="robust",
@@ -14,21 +14,15 @@ Usage::
 
 from __future__ import annotations
 
-from hybrid_activity_recognition.models.modular.encoders import (
+from hybrid_activity_recognition.models.encoders import (
     CNNLSTMEncoder,
     NullSignalEncoder,
     RobustCNNLSTMEncoder,
 )
-from hybrid_activity_recognition.models.modular.fusion import ConcatFusion
-from hybrid_activity_recognition.models.modular.heads import LinearHead, MLPHead, PatchTSTHFClassificationHead
-from hybrid_activity_recognition.models.modular.model import HybridModel
-from hybrid_activity_recognition.models.modular.tsfel_branches import MLPTsfelBranch
-
-# Legacy name → (encoder_name, input_mode)
-_LEGACY_MAP: dict[str, tuple[str, str]] = {
-    "hybrid_cnn_lstm": ("cnn_lstm", "hybrid"),
-    "robust_hybrid": ("robust", "hybrid"),
-}
+from hybrid_activity_recognition.models.fusion import ConcatFusion
+from hybrid_activity_recognition.models.heads import LinearHead, MLPHead, PatchTSTHFClassificationHead
+from hybrid_activity_recognition.models.model import HybridModel
+from hybrid_activity_recognition.models.tsfel_branches import MLPTsfelBranch
 
 _ENCODER_REGISTRY: dict[str, type] = {
     "cnn_lstm": CNNLSTMEncoder,
@@ -53,7 +47,7 @@ def build_hybrid_model(
     Parameters
     ----------
     encoder_name : str
-        ``"cnn_lstm"`` | ``"robust"`` | ``"patchtst"`` | ``"tsfel_mlp"`` (or legacy names).
+        ``"cnn_lstm"`` | ``"robust"`` | ``"patchtst"`` | ``"tsfel_mlp"``.
     input_mode : str
         ``"deep_only"`` | ``"hybrid"`` | ``"tsfel_only"``.
     num_classes : int
@@ -71,17 +65,13 @@ def build_hybrid_model(
     **encoder_kwargs
         Extra keyword arguments forwarded to the encoder constructor.
     """
-    # Resolve legacy names
-    if encoder_name in _LEGACY_MAP:
-        encoder_name, input_mode = _LEGACY_MAP[encoder_name]
-
     # Build encoder
     if encoder_name == "tsfel_mlp":
         if input_mode != "tsfel_only":
             raise ValueError("tsfel_mlp requires input_mode='tsfel_only'.")
         encoder = NullSignalEncoder()
     elif encoder_name == "patchtst":
-        from hybrid_activity_recognition.models.modular.encoders import PatchTSTEncoder
+        from hybrid_activity_recognition.models.encoders import PatchTSTEncoder
 
         encoder = PatchTSTEncoder(**encoder_kwargs)
     elif encoder_name in _ENCODER_REGISTRY:

@@ -8,7 +8,7 @@ from __future__ import annotations
 import torch.nn as nn
 from torch import Tensor
 
-from hybrid_activity_recognition.models.modular.base import ClassificationHead
+from hybrid_activity_recognition.models.base import ClassificationHead
 
 
 class MLPHead(ClassificationHead):

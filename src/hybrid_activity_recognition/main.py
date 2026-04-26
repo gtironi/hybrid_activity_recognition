@@ -15,7 +15,7 @@ from pathlib import Path
 import torch
 
 from hybrid_activity_recognition.data.dataloader import prepare_train_val_test_loaders
-from hybrid_activity_recognition.models.modular import build_hybrid_model
+from hybrid_activity_recognition.models import build_hybrid_model
 from hybrid_activity_recognition.training.metrics import classification_metrics_numpy
 from hybrid_activity_recognition.training.trainer import Trainer
 from hybrid_activity_recognition.utils.logging import setup_logging
@@ -40,10 +40,7 @@ def parse_args():
         "--model",
         type=str,
         default="robust",
-        help=(
-            "Encoder name: cnn_lstm | robust | patchtst | tsfel_mlp "
-            "(or legacy: hybrid_cnn_lstm, robust_hybrid)"
-        ),
+        help="Encoder name: cnn_lstm | robust | patchtst | tsfel_mlp",
     )
     p.add_argument(
         "--input_mode",

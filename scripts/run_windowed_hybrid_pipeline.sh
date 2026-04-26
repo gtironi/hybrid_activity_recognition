@@ -11,7 +11,7 @@
 #     -- \
 #     --batch-size 5000 \
 #     -- \
-#     --mode supervised --model robust_hybrid --epochs 10
+#     --mode supervised --model robust --epochs 10
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"

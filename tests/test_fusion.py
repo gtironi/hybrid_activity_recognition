@@ -6,7 +6,7 @@ B = 4
 
 
 def test_mlp_tsfel_branch():
-    from hybrid_activity_recognition.models.modular.tsfel_branches import MLPTsfelBranch
+    from hybrid_activity_recognition.models.tsfel_branches import MLPTsfelBranch
 
     branch = MLPTsfelBranch(in_features=120, hidden_dim=64)
     x = torch.randn(B, 120)
@@ -16,7 +16,7 @@ def test_mlp_tsfel_branch():
 
 
 def test_concat_fusion():
-    from hybrid_activity_recognition.models.modular.fusion import ConcatFusion
+    from hybrid_activity_recognition.models.fusion import ConcatFusion
 
     fus = ConcatFusion(signal_dim=128, tsfel_dim=64)
     z_sig = torch.randn(B, 128)
@@ -27,7 +27,7 @@ def test_concat_fusion():
 
 
 def test_mlp_head():
-    from hybrid_activity_recognition.models.modular.heads import MLPHead
+    from hybrid_activity_recognition.models.heads import MLPHead
 
     head = MLPHead(in_dim=192, hidden_dim=128, num_classes=19)
     x = torch.randn(B, 192)
@@ -36,7 +36,7 @@ def test_mlp_head():
 
 
 def test_linear_head():
-    from hybrid_activity_recognition.models.modular.heads import LinearHead
+    from hybrid_activity_recognition.models.heads import LinearHead
 
     head = LinearHead(in_dim=256, num_classes=10)
     x = torch.randn(B, 256)

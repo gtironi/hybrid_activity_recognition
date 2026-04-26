@@ -16,7 +16,7 @@ from typing import Literal
 import torch.nn as nn
 from torch import Tensor
 
-from hybrid_activity_recognition.models.modular.base import (
+from hybrid_activity_recognition.models.base import (
     ClassificationHead,
     FusionModule,
     SignalEncoder,

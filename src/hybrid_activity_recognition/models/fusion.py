@@ -9,7 +9,7 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from hybrid_activity_recognition.models.modular.base import FusionModule
+from hybrid_activity_recognition.models.base import FusionModule
 
 
 class ConcatFusion(FusionModule):
