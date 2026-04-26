@@ -37,45 +37,53 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 
 
+LABEL_MAP = {
+    "Standing": ["standing"],
+    "Lying": ["lying", "lying-down"],
+    "Drinking": ["drinking", "drinking_milk", "drinking_electrolytes", "drinking|water"],
+    "Eating": ["eating", "eating_concentrates", "eating_bedding", "eating_forage"],
+    "Walking": ["walking", "backward"],
+    "Run": ["running"],
+    "Grooming": ["grooming", "grooming_lying", "grooming|None"],
+    "Social Interaction": [
+        "social",
+        "social_sniff",
+        "social_sniff_lying",
+        "social_groom",
+        "social_groom_lying",
+        "social_nudge",
+        "social_nudge_lying",
+    ],
+    "Play": ["play", "play_object", "headbutt", "jump", "mount"],
+    "Rising": ["rising"],
+    "Rumination": ["rumination", "rumination_lying"],
+    "Defecation": ["defecation"],
+    "Urination": ["urination"],
+    "Oral manipulation of pen": ["oral_manipulation_of_pen"],
+    "Sniff": ["sniff", "sniff_walking", "sniff_lying"],
+    "Abnormal": [
+        "abnormal",
+        "cross-suckle_udder",
+        "cross-suckle_other",
+        "tongue_rolling",
+        "tongue_rolling_lying",
+    ],
+    "SRS": ["SRS", "scratch", "rub", "stretch"],
+    "Cough": ["cough"],
+    "Fall": ["fall"],
+    "Vocalization": ["vocalization", "vocalisation"],
+}
+
+RAW_TO_CANONICAL = {
+    raw_label.lower().strip(): target_label
+    for target_label, raw_labels in LABEL_MAP.items()
+    for raw_label in raw_labels
+}
+
+
 def map_behavior(label: str) -> str:
-    label = str(label).lower().strip()
-    if any(x in label for x in ["cough", "fall", "vocalisation"]):
-        return "rare_event"
-    if any(x in label for x in ["cross-suckle", "tongue", "abnormal"]):
-        return "abnormal"
-    if any(x in label for x in ["scratch", "rub", "stretch", "srs"]):
-        return "srs"
-    if "defecat" in label or "urinat" in label:
-        return "elimination"
-    if any(x in label for x in ["play", "jump", "headbutt", "mount"]):
-        return "play"
-    if "social" in label or "nudge" in label:
-        return "social_interaction"
-    if "ruminat" in label:
-        return "rumination"
-    if "drink" in label:
-        return "drinking"
-    if "eat" in label:
-        return "eating"
-    if "sniff" in label:
-        return "sniff"
-    if "oral" in label or "manipulation" in label:
-        return "oral_manipulation"
-    if "groom" in label:
-        return "grooming"
-    if "rising" in label:
-        return "rising"
-    if "lying down" in label or "lying-down" in label:
-        return "lying_down_action"
-    if "run" in label:
-        return "running"
-    if "walk" in label or "backward" in label:
-        return "walking"
-    if "ly" in label:
-        return "lying"
-    if "stand" in label:
-        return "standing"
-    return "other"
+    normalized = str(label).lower().strip()
+    return RAW_TO_CANONICAL.get(normalized, "Other")
 
 
 def create_windowed_dataframe(
