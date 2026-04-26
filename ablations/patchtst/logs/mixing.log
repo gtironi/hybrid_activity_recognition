@@ -1,0 +1,188 @@
+[2026-04-26T09:40:35-0300] mixing: running proxy mixing test proxy_d128_l3_h4_p8_s8
+[2026-04-26T09:40:35-0300] pretrain mixing_proxy_d128_l3_h4_p8_s8: start
+2026-04-26 09:40:36 INFO __main__: device=cuda
+2026-04-26 09:40:40 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 001/100 | loss=0.986249 | lr=1.00e-03
+2026-04-26 09:40:42 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 002/100 | loss=0.984419 | lr=9.99e-04
+2026-04-26 09:40:44 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 003/100 | loss=0.984010 | lr=9.98e-04
+2026-04-26 09:40:46 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 004/100 | loss=0.983902 | lr=9.96e-04
+2026-04-26 09:40:48 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 005/100 | loss=0.983934 | lr=9.94e-04
+2026-04-26 09:40:50 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 006/100 | loss=0.984052 | lr=9.91e-04
+2026-04-26 09:40:52 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 007/100 | loss=0.983890 | lr=9.88e-04
+2026-04-26 09:40:54 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 008/100 | loss=0.982701 | lr=9.84e-04
+2026-04-26 09:40:56 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 009/100 | loss=0.983636 | lr=9.80e-04
+2026-04-26 09:40:57 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 010/100 | loss=0.983798 | lr=9.76e-04
+2026-04-26 09:40:59 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 011/100 | loss=0.983706 | lr=9.70e-04
+2026-04-26 09:41:01 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 012/100 | loss=0.983822 | lr=9.65e-04
+2026-04-26 09:41:03 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 013/100 | loss=0.984128 | lr=9.59e-04
+2026-04-26 09:41:05 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 014/100 | loss=0.983759 | lr=9.52e-04
+2026-04-26 09:41:07 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 015/100 | loss=0.983157 | lr=9.46e-04
+2026-04-26 09:41:09 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 016/100 | loss=0.984571 | lr=9.38e-04
+2026-04-26 09:41:11 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 017/100 | loss=0.984551 | lr=9.30e-04
+2026-04-26 09:41:13 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 018/100 | loss=0.984533 | lr=9.22e-04
+2026-04-26 09:41:15 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 019/100 | loss=0.985693 | lr=9.14e-04
+2026-04-26 09:41:17 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 020/100 | loss=0.982957 | lr=9.05e-04
+2026-04-26 09:41:19 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 021/100 | loss=0.984117 | lr=8.95e-04
+2026-04-26 09:41:20 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 022/100 | loss=0.985252 | lr=8.85e-04
+2026-04-26 09:41:22 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 023/100 | loss=0.982838 | lr=8.75e-04
+2026-04-26 09:41:24 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 024/100 | loss=0.984833 | lr=8.64e-04
+2026-04-26 09:41:26 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 025/100 | loss=0.985132 | lr=8.54e-04
+2026-04-26 09:41:28 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 026/100 | loss=0.983429 | lr=8.42e-04
+2026-04-26 09:41:30 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 027/100 | loss=0.984280 | lr=8.31e-04
+2026-04-26 09:41:32 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 028/100 | loss=0.983726 | lr=8.19e-04
+2026-04-26 09:41:34 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 029/100 | loss=0.984514 | lr=8.06e-04
+2026-04-26 09:41:36 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 030/100 | loss=0.983544 | lr=7.94e-04
+2026-04-26 09:41:38 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 031/100 | loss=0.983314 | lr=7.81e-04
+2026-04-26 09:41:40 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 032/100 | loss=0.984076 | lr=7.68e-04
+2026-04-26 09:41:42 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 033/100 | loss=0.984954 | lr=7.55e-04
+2026-04-26 09:41:44 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 034/100 | loss=0.982777 | lr=7.41e-04
+2026-04-26 09:41:46 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 035/100 | loss=0.983625 | lr=7.27e-04
+2026-04-26 09:41:47 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 036/100 | loss=0.984003 | lr=7.13e-04
+2026-04-26 09:41:49 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 037/100 | loss=0.983068 | lr=6.99e-04
+2026-04-26 09:41:51 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 038/100 | loss=0.983405 | lr=6.84e-04
+2026-04-26 09:41:53 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 039/100 | loss=0.983061 | lr=6.69e-04
+2026-04-26 09:41:55 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 040/100 | loss=0.983385 | lr=6.55e-04
+2026-04-26 09:41:57 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 041/100 | loss=0.984145 | lr=6.39e-04
+2026-04-26 09:41:59 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 042/100 | loss=0.983824 | lr=6.24e-04
+2026-04-26 09:42:01 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 043/100 | loss=0.983232 | lr=6.09e-04
+2026-04-26 09:42:03 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 044/100 | loss=0.985281 | lr=5.94e-04
+2026-04-26 09:42:05 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 045/100 | loss=0.984374 | lr=5.78e-04
+2026-04-26 09:42:07 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 046/100 | loss=0.984206 | lr=5.63e-04
+2026-04-26 09:42:09 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 047/100 | loss=0.984316 | lr=5.47e-04
+2026-04-26 09:42:11 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 048/100 | loss=0.984074 | lr=5.31e-04
+2026-04-26 09:42:13 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 049/100 | loss=0.984645 | lr=5.16e-04
+2026-04-26 09:42:14 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 050/100 | loss=0.983502 | lr=5.00e-04
+2026-04-26 09:42:16 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 051/100 | loss=0.983059 | lr=4.84e-04
+2026-04-26 09:42:18 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 052/100 | loss=0.984173 | lr=4.69e-04
+2026-04-26 09:42:20 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 053/100 | loss=0.984179 | lr=4.53e-04
+2026-04-26 09:42:22 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 054/100 | loss=0.983303 | lr=4.37e-04
+2026-04-26 09:42:24 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 055/100 | loss=0.983226 | lr=4.22e-04
+2026-04-26 09:42:26 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 056/100 | loss=0.984239 | lr=4.06e-04
+2026-04-26 09:42:28 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 057/100 | loss=0.984058 | lr=3.91e-04
+2026-04-26 09:42:30 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 058/100 | loss=0.983909 | lr=3.76e-04
+2026-04-26 09:42:32 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 059/100 | loss=0.985058 | lr=3.61e-04
+2026-04-26 09:42:34 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 060/100 | loss=0.984605 | lr=3.45e-04
+2026-04-26 09:42:36 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 061/100 | loss=0.983647 | lr=3.31e-04
+2026-04-26 09:42:38 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 062/100 | loss=0.983964 | lr=3.16e-04
+2026-04-26 09:42:40 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 063/100 | loss=0.983189 | lr=3.01e-04
+2026-04-26 09:42:41 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 064/100 | loss=0.982819 | lr=2.87e-04
+2026-04-26 09:42:43 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 065/100 | loss=0.983779 | lr=2.73e-04
+2026-04-26 09:42:45 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 066/100 | loss=0.985318 | lr=2.59e-04
+2026-04-26 09:42:47 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 067/100 | loss=0.984150 | lr=2.45e-04
+2026-04-26 09:42:49 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 068/100 | loss=0.983171 | lr=2.32e-04
+2026-04-26 09:42:51 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 069/100 | loss=0.983669 | lr=2.19e-04
+2026-04-26 09:42:53 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 070/100 | loss=0.983474 | lr=2.06e-04
+2026-04-26 09:42:55 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 071/100 | loss=0.983733 | lr=1.94e-04
+2026-04-26 09:42:57 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 072/100 | loss=0.984208 | lr=1.81e-04
+2026-04-26 09:42:59 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 073/100 | loss=0.984303 | lr=1.69e-04
+2026-04-26 09:43:01 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 074/100 | loss=0.983930 | lr=1.58e-04
+2026-04-26 09:43:03 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 075/100 | loss=0.984201 | lr=1.46e-04
+2026-04-26 09:43:05 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 076/100 | loss=0.983561 | lr=1.36e-04
+2026-04-26 09:43:07 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 077/100 | loss=0.983205 | lr=1.25e-04
+2026-04-26 09:43:08 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 078/100 | loss=0.984475 | lr=1.15e-04
+2026-04-26 09:43:10 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 079/100 | loss=0.985186 | lr=1.05e-04
+2026-04-26 09:43:12 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 080/100 | loss=0.983808 | lr=9.55e-05
+2026-04-26 09:43:14 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 081/100 | loss=0.983692 | lr=8.65e-05
+2026-04-26 09:43:16 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 082/100 | loss=0.984715 | lr=7.78e-05
+2026-04-26 09:43:18 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 083/100 | loss=0.983748 | lr=6.96e-05
+2026-04-26 09:43:20 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 084/100 | loss=0.982944 | lr=6.18e-05
+2026-04-26 09:43:22 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 085/100 | loss=0.984187 | lr=5.45e-05
+2026-04-26 09:43:24 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 086/100 | loss=0.983144 | lr=4.76e-05
+2026-04-26 09:43:26 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 087/100 | loss=0.982917 | lr=4.11e-05
+2026-04-26 09:43:28 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 088/100 | loss=0.983382 | lr=3.51e-05
+2026-04-26 09:43:30 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 089/100 | loss=0.983911 | lr=2.96e-05
+2026-04-26 09:43:32 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 090/100 | loss=0.983515 | lr=2.45e-05
+2026-04-26 09:43:34 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 091/100 | loss=0.983270 | lr=1.99e-05
+2026-04-26 09:43:35 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 092/100 | loss=0.982918 | lr=1.57e-05
+2026-04-26 09:43:37 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 093/100 | loss=0.984025 | lr=1.20e-05
+2026-04-26 09:43:39 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 094/100 | loss=0.984090 | lr=8.86e-06
+2026-04-26 09:43:41 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 095/100 | loss=0.984529 | lr=6.16e-06
+2026-04-26 09:43:43 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 096/100 | loss=0.983723 | lr=3.94e-06
+2026-04-26 09:43:45 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 097/100 | loss=0.983908 | lr=2.22e-06
+2026-04-26 09:43:47 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 098/100 | loss=0.982792 | lr=9.87e-07
+2026-04-26 09:43:49 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 099/100 | loss=0.984526 | lr=2.47e-07
+2026-04-26 09:43:51 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretrain Ep 100/100 | loss=0.983041 | lr=0.00e+00
+2026-04-26 09:43:51 INFO hybrid_activity_recognition.training.pretrain_trainer: Pretraining done. Best loss=0.982701. Saved to /home/emap/tironi/hybrid_activity_recognition/experiments/ablations_patchtst/patchtst_pretrain_AcTBeCalf_mixing_proxy_d128_l3_h4_p8_s8_s42/best.pt
+2026-04-26 09:43:51 INFO __main__: Pretraining complete. Best checkpoint: /home/emap/tironi/hybrid_activity_recognition/experiments/ablations_patchtst/patchtst_pretrain_AcTBeCalf_mixing_proxy_d128_l3_h4_p8_s8_s42/best.pt
+[2026-04-26T09:43:52-0300] pretrain mixing_proxy_d128_l3_h4_p8_s8: done
+/home/emap/tironi/hybrid_activity_recognition/experiments/ablations_patchtst/patchtst_pretrain_AcTBeCalf_mixing_proxy_d128_l3_h4_p8_s8_s42/best.pt
+[2026-04-26T09:43:52-0300] supervised deep_only mixing_proxy_d128_l3_h4_p8_s8: start
+2026-04-26 09:43:53 INFO __main__: device=cuda
+2026-04-26 09:43:54 INFO __main__: classes=18 n_tsfel_feats=75
+/home/emap/tironi/hybrid_activity_recognition/src/hybrid_activity_recognition/models/modular/encoders.py:171: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = torch.load(path, map_location="cpu")
+2026-04-26 09:43:57 INFO hybrid_activity_recognition.training.trainer: Ep 001/150 | train_loss=2.8982 acc=1.96% | val_loss=2.8758 val_acc=3.70%
+2026-04-26 09:43:59 INFO hybrid_activity_recognition.training.trainer: Ep 002/150 | train_loss=2.9017 acc=3.41% | val_loss=2.8755 val_acc=0.50%
+2026-04-26 09:44:01 INFO hybrid_activity_recognition.training.trainer: Ep 003/150 | train_loss=2.8906 acc=3.40% | val_loss=2.8639 val_acc=1.77%
+2026-04-26 09:44:03 INFO hybrid_activity_recognition.training.trainer: Ep 004/150 | train_loss=2.8629 acc=3.90% | val_loss=2.8795 val_acc=3.79%
+2026-04-26 09:44:05 INFO hybrid_activity_recognition.training.trainer: Ep 005/150 | train_loss=2.8186 acc=4.39% | val_loss=2.8701 val_acc=1.47%
+2026-04-26 09:44:07 INFO hybrid_activity_recognition.training.trainer: Ep 006/150 | train_loss=2.8355 acc=3.35% | val_loss=2.8586 val_acc=1.51%
+2026-04-26 09:44:09 INFO hybrid_activity_recognition.training.trainer: Ep 007/150 | train_loss=2.7978 acc=3.79% | val_loss=2.9283 val_acc=10.77%
+2026-04-26 09:44:11 INFO hybrid_activity_recognition.training.trainer: Ep 008/150 | train_loss=2.7746 acc=5.62% | val_loss=2.8828 val_acc=2.36%
+2026-04-26 09:44:14 INFO hybrid_activity_recognition.training.trainer: Ep 009/150 | train_loss=2.7714 acc=3.13% | val_loss=2.9484 val_acc=5.47%
+2026-04-26 09:44:16 INFO hybrid_activity_recognition.training.trainer: Ep 010/150 | train_loss=2.7116 acc=3.65% | val_loss=2.8720 val_acc=2.27%
+2026-04-26 09:44:18 INFO hybrid_activity_recognition.training.trainer: Ep 011/150 | train_loss=2.7964 acc=2.59% | val_loss=2.9051 val_acc=3.37%
+2026-04-26 09:44:20 INFO hybrid_activity_recognition.training.trainer: Ep 012/150 | train_loss=2.7488 acc=3.80% | val_loss=2.8399 val_acc=2.48%
+2026-04-26 09:44:22 INFO hybrid_activity_recognition.training.trainer: Ep 013/150 | train_loss=2.7101 acc=4.15% | val_loss=2.9270 val_acc=1.81%
+2026-04-26 09:44:24 INFO hybrid_activity_recognition.training.trainer: Ep 014/150 | train_loss=2.6859 acc=3.19% | val_loss=2.9716 val_acc=1.43%
+2026-04-26 09:44:26 INFO hybrid_activity_recognition.training.trainer: Ep 015/150 | train_loss=2.7486 acc=3.12% | val_loss=2.8869 val_acc=1.72%
+2026-04-26 09:44:28 INFO hybrid_activity_recognition.training.trainer: Ep 016/150 | train_loss=2.6874 acc=3.49% | val_loss=2.9394 val_acc=2.69%
+2026-04-26 09:44:30 INFO hybrid_activity_recognition.training.trainer: Ep 017/150 | train_loss=2.6452 acc=4.49% | val_loss=2.9254 val_acc=4.75%
+2026-04-26 09:44:30 INFO hybrid_activity_recognition.training.trainer: Early stopping (no improvement for 10 epochs).
+2026-04-26 09:44:30 INFO __main__: test: acc=0.1500 macro_f1=0.0322
+[2026-04-26T09:44:31-0300] supervised deep_only mixing_proxy_d128_l3_h4_p8_s8: done
+[2026-04-26T09:44:31-0300] supervised hybrid mixing_proxy_d128_l3_h4_p8_s8: start
+2026-04-26 09:44:32 INFO __main__: device=cuda
+2026-04-26 09:44:33 INFO __main__: classes=18 n_tsfel_feats=75
+/home/emap/tironi/hybrid_activity_recognition/src/hybrid_activity_recognition/models/modular/encoders.py:171: FutureWarning: You are using `torch.load` with `weights_only=False` (the current default value), which uses the default pickle module implicitly. It is possible to construct malicious pickle data which will execute arbitrary code during unpickling (See https://github.com/pytorch/pytorch/blob/main/SECURITY.md#untrusted-models for more details). In a future release, the default value for `weights_only` will be flipped to `True`. This limits the functions that could be executed during unpickling. Arbitrary objects will no longer be allowed to be loaded via this mode unless they are explicitly allowlisted by the user via `torch.serialization.add_safe_globals`. We recommend you start setting `weights_only=True` for any use case where you don't have full control of the loaded file. Please open an issue on GitHub for any issues related to this experimental feature.
+  state = torch.load(path, map_location="cpu")
+2026-04-26 09:44:36 INFO hybrid_activity_recognition.training.trainer: Ep 001/150 | train_loss=2.5359 acc=27.01% | val_loss=2.2041 val_acc=35.25%
+2026-04-26 09:44:38 INFO hybrid_activity_recognition.training.trainer: Ep 002/150 | train_loss=2.1239 acc=38.92% | val_loss=1.9846 val_acc=39.50%
+2026-04-26 09:44:40 INFO hybrid_activity_recognition.training.trainer: Ep 003/150 | train_loss=1.9353 acc=42.32% | val_loss=1.8799 val_acc=47.24%
+2026-04-26 09:44:42 INFO hybrid_activity_recognition.training.trainer: Ep 004/150 | train_loss=1.7929 acc=45.70% | val_loss=1.7820 val_acc=49.60%
+2026-04-26 09:44:44 INFO hybrid_activity_recognition.training.trainer: Ep 005/150 | train_loss=1.6994 acc=48.41% | val_loss=1.7073 val_acc=51.96%
+2026-04-26 09:44:46 INFO hybrid_activity_recognition.training.trainer: Ep 006/150 | train_loss=1.6086 acc=50.41% | val_loss=1.6801 val_acc=51.66%
+2026-04-26 09:44:48 INFO hybrid_activity_recognition.training.trainer: Ep 007/150 | train_loss=1.5565 acc=51.48% | val_loss=1.6453 val_acc=54.69%
+2026-04-26 09:44:51 INFO hybrid_activity_recognition.training.trainer: Ep 008/150 | train_loss=1.5432 acc=52.30% | val_loss=1.6251 val_acc=56.96%
+2026-04-26 09:44:53 INFO hybrid_activity_recognition.training.trainer: Ep 009/150 | train_loss=1.4839 acc=53.91% | val_loss=1.5678 val_acc=56.29%
+2026-04-26 09:44:55 INFO hybrid_activity_recognition.training.trainer: Ep 010/150 | train_loss=1.4422 acc=54.08% | val_loss=1.5442 val_acc=56.63%
+2026-04-26 09:44:57 INFO hybrid_activity_recognition.training.trainer: Ep 011/150 | train_loss=1.4035 acc=55.42% | val_loss=1.5195 val_acc=58.77%
+2026-04-26 09:44:59 INFO hybrid_activity_recognition.training.trainer: Ep 012/150 | train_loss=1.3585 acc=56.54% | val_loss=1.5245 val_acc=57.51%
+2026-04-26 09:45:01 INFO hybrid_activity_recognition.training.trainer: Ep 013/150 | train_loss=1.2963 acc=56.55% | val_loss=1.5024 val_acc=61.09%
+2026-04-26 09:45:03 INFO hybrid_activity_recognition.training.trainer: Ep 014/150 | train_loss=1.2960 acc=57.63% | val_loss=1.4634 val_acc=60.54%
+2026-04-26 09:45:05 INFO hybrid_activity_recognition.training.trainer: Ep 015/150 | train_loss=1.2623 acc=58.34% | val_loss=1.5542 val_acc=61.09%
+2026-04-26 09:45:07 INFO hybrid_activity_recognition.training.trainer: Ep 016/150 | train_loss=1.2320 acc=59.32% | val_loss=1.4982 val_acc=61.17%
+2026-04-26 09:45:09 INFO hybrid_activity_recognition.training.trainer: Ep 017/150 | train_loss=1.2051 acc=59.34% | val_loss=1.4842 val_acc=61.04%
+2026-04-26 09:45:11 INFO hybrid_activity_recognition.training.trainer: Ep 018/150 | train_loss=1.1715 acc=59.95% | val_loss=1.5020 val_acc=62.77%
+2026-04-26 09:45:13 INFO hybrid_activity_recognition.training.trainer: Ep 019/150 | train_loss=1.1637 acc=60.46% | val_loss=1.4144 val_acc=63.15%
+2026-04-26 09:45:15 INFO hybrid_activity_recognition.training.trainer: Ep 020/150 | train_loss=1.1268 acc=60.74% | val_loss=1.4371 val_acc=65.63%
+2026-04-26 09:45:17 INFO hybrid_activity_recognition.training.trainer: Ep 021/150 | train_loss=1.1198 acc=61.31% | val_loss=1.4695 val_acc=65.54%
+2026-04-26 09:45:19 INFO hybrid_activity_recognition.training.trainer: Ep 022/150 | train_loss=1.0938 acc=62.08% | val_loss=1.3974 val_acc=64.91%
+2026-04-26 09:45:21 INFO hybrid_activity_recognition.training.trainer: Ep 023/150 | train_loss=1.0586 acc=62.53% | val_loss=1.3923 val_acc=66.89%
+2026-04-26 09:45:23 INFO hybrid_activity_recognition.training.trainer: Ep 024/150 | train_loss=1.0531 acc=63.34% | val_loss=1.3958 val_acc=64.62%
+2026-04-26 09:45:25 INFO hybrid_activity_recognition.training.trainer: Ep 025/150 | train_loss=1.0279 acc=62.96% | val_loss=1.3702 val_acc=64.91%
+2026-04-26 09:45:27 INFO hybrid_activity_recognition.training.trainer: Ep 026/150 | train_loss=1.0152 acc=63.43% | val_loss=1.4051 val_acc=66.64%
+2026-04-26 09:45:29 INFO hybrid_activity_recognition.training.trainer: Ep 027/150 | train_loss=0.9957 acc=64.34% | val_loss=1.5391 val_acc=66.85%
+2026-04-26 09:45:31 INFO hybrid_activity_recognition.training.trainer: Ep 028/150 | train_loss=0.9958 acc=64.36% | val_loss=1.4176 val_acc=66.64%
+2026-04-26 09:45:33 INFO hybrid_activity_recognition.training.trainer: Ep 029/150 | train_loss=0.9759 acc=64.71% | val_loss=1.4619 val_acc=67.40%
+2026-04-26 09:45:35 INFO hybrid_activity_recognition.training.trainer: Ep 030/150 | train_loss=0.9595 acc=65.58% | val_loss=1.4211 val_acc=68.03%
+2026-04-26 09:45:37 INFO hybrid_activity_recognition.training.trainer: Ep 031/150 | train_loss=0.9372 acc=65.29% | val_loss=1.5216 val_acc=67.10%
+2026-04-26 09:45:39 INFO hybrid_activity_recognition.training.trainer: Ep 032/150 | train_loss=0.9127 acc=66.05% | val_loss=1.4707 val_acc=67.94%
+2026-04-26 09:45:41 INFO hybrid_activity_recognition.training.trainer: Ep 033/150 | train_loss=0.8890 acc=66.33% | val_loss=1.5166 val_acc=68.32%
+2026-04-26 09:45:43 INFO hybrid_activity_recognition.training.trainer: Ep 034/150 | train_loss=0.8692 acc=67.11% | val_loss=1.5532 val_acc=67.94%
+2026-04-26 09:45:45 INFO hybrid_activity_recognition.training.trainer: Ep 035/150 | train_loss=0.8585 acc=67.10% | val_loss=1.5427 val_acc=67.56%
+2026-04-26 09:45:48 INFO hybrid_activity_recognition.training.trainer: Ep 036/150 | train_loss=0.8455 acc=66.82% | val_loss=1.5818 val_acc=68.36%
+2026-04-26 09:45:50 INFO hybrid_activity_recognition.training.trainer: Ep 037/150 | train_loss=0.8442 acc=67.34% | val_loss=1.5710 val_acc=68.99%
+2026-04-26 09:45:52 INFO hybrid_activity_recognition.training.trainer: Ep 038/150 | train_loss=0.8247 acc=67.42% | val_loss=1.5917 val_acc=68.36%
+2026-04-26 09:45:54 INFO hybrid_activity_recognition.training.trainer: Ep 039/150 | train_loss=0.8247 acc=67.75% | val_loss=1.6068 val_acc=68.78%
+2026-04-26 09:45:56 INFO hybrid_activity_recognition.training.trainer: Ep 040/150 | train_loss=0.8109 acc=67.77% | val_loss=1.6156 val_acc=68.78%
+2026-04-26 09:45:58 INFO hybrid_activity_recognition.training.trainer: Ep 041/150 | train_loss=0.8100 acc=67.55% | val_loss=1.6115 val_acc=68.57%
+2026-04-26 09:46:00 INFO hybrid_activity_recognition.training.trainer: Ep 042/150 | train_loss=0.8058 acc=67.50% | val_loss=1.6235 val_acc=68.87%
+2026-04-26 09:46:02 INFO hybrid_activity_recognition.training.trainer: Ep 043/150 | train_loss=0.8010 acc=67.85% | val_loss=1.6449 val_acc=68.45%
+2026-04-26 09:46:04 INFO hybrid_activity_recognition.training.trainer: Ep 044/150 | train_loss=0.7923 acc=68.04% | val_loss=1.6472 val_acc=68.45%
+2026-04-26 09:46:06 INFO hybrid_activity_recognition.training.trainer: Ep 045/150 | train_loss=0.7972 acc=67.98% | val_loss=1.6506 val_acc=68.78%
+2026-04-26 09:46:08 INFO hybrid_activity_recognition.training.trainer: Ep 046/150 | train_loss=0.7951 acc=67.95% | val_loss=1.6560 val_acc=68.78%
+2026-04-26 09:46:10 INFO hybrid_activity_recognition.training.trainer: Ep 047/150 | train_loss=0.7852 acc=68.16% | val_loss=1.6522 val_acc=68.87%
+2026-04-26 09:46:10 INFO hybrid_activity_recognition.training.trainer: Early stopping (no improvement for 10 epochs).
+2026-04-26 09:46:10 INFO __main__: test: acc=0.7472 macro_f1=0.4086
+[2026-04-26T09:46:11-0300] supervised hybrid mixing_proxy_d128_l3_h4_p8_s8: done
+[2026-04-26T09:46:11-0300] mixing: done
