@@ -43,15 +43,19 @@ class HybridModel(nn.Module):
         self.head = head
 
     def forward(self, x_signal: Tensor, x_features: Tensor) -> Tensor:
+        z_ts = self.tsfel_branch(x_features)
+        
         if self.input_mode == "tsfel_only":
-            z_ts = self.tsfel_branch(x_features)
             return self.head(z_ts)
 
-        z_sig = self.encoder(x_signal)
+        # Some heads (HF PatchTSTClassificationHead) expect 4D hidden states.
+        if getattr(self.head, "needs_patchtst_hidden", False):
+            z_sig = self.encoder.forward_hidden(x_signal)
+        else:
+            z_sig = self.encoder(x_signal)
 
         if self.input_mode == "deep_only":
             return self.head(z_sig)
 
-        z_ts = self.tsfel_branch(x_features)
         z_fused = self.fusion(z_sig, z_ts)
         return self.head(z_fused)

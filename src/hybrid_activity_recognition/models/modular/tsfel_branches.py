@@ -14,8 +14,7 @@ from hybrid_activity_recognition.models.modular.base import TsfelBranch
 class MLPTsfelBranch(TsfelBranch):
     """Identity TSFEL branch.
 
-    Keeps the public class name for compatibility, but returns the input tensor
-    unchanged so TSFEL features flow directly into fusion or the head.
+    Returns the input tensor unchanged so TSFEL features flow directly into fusion or the head.
     """
 
     def __init__(self, in_features: int, hidden_dim: int, dropout: float = 0.3):

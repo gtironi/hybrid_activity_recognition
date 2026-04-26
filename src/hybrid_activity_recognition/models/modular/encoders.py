@@ -131,6 +131,7 @@ class PatchTSTEncoder(SignalEncoder):
         num_heads: int = 4,
         num_layers: int = 3,
         dropout: float = 0.1,
+        revin: bool = True,
         in_channels: int = 3,
         pretrained_path: str | None = None,
     ):
@@ -146,6 +147,7 @@ class PatchTSTEncoder(SignalEncoder):
             num_attention_heads=num_heads,
             num_hidden_layers=num_layers,
             dropout=dropout,
+            revin=revin,
             channel_attention=False,
         )
         self._backbone = PatchTSTModel(config)
@@ -165,6 +167,15 @@ class PatchTSTEncoder(SignalEncoder):
         # last_hidden_state: (B, num_channels, num_patches, d_model)
         # Mean pool over channels and patches -> (B, d_model)
         return out.last_hidden_state.mean(dim=(1, 2))
+
+    def forward_hidden(self, x_signal: Tensor) -> Tensor:
+        """Return PatchTST last_hidden_state for HF-style classification heads.
+
+        Shape: (B, C, num_patches, d_model)
+        """
+        x = x_signal.permute(0, 2, 1)
+        out = self._backbone(past_values=x)
+        return out.last_hidden_state
 
     def load_pretrained_encoder(self, path: str) -> None:
         """Load backbone weights from a PatchTSTForPretraining checkpoint."""

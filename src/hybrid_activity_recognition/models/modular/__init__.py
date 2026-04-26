@@ -20,7 +20,7 @@ from hybrid_activity_recognition.models.modular.encoders import (
     RobustCNNLSTMEncoder,
 )
 from hybrid_activity_recognition.models.modular.fusion import ConcatFusion
-from hybrid_activity_recognition.models.modular.heads import LinearHead, MLPHead
+from hybrid_activity_recognition.models.modular.heads import LinearHead, MLPHead, PatchTSTHFClassificationHead
 from hybrid_activity_recognition.models.modular.model import HybridModel
 from hybrid_activity_recognition.models.modular.tsfel_branches import MLPTsfelBranch
 
@@ -41,6 +41,7 @@ def build_hybrid_model(
     input_mode: str = "hybrid",
     num_classes: int = 19,
     n_tsfel_feats: int = 120,
+    head_name: str = "mlp",
     head_hidden_dim: int = 256,
     head_dropout: float = 0.4,
     tsfel_hidden_dim: int | None = None,
@@ -110,6 +111,17 @@ def build_hybrid_model(
             f"Unknown input_mode: {input_mode!r}. Use 'deep_only', 'hybrid', or 'tsfel_only'."
         )
 
-    head = MLPHead(head_in_dim, head_hidden_dim, num_classes, dropout=head_dropout)
+    if head_name == "mlp":
+        head = MLPHead(head_in_dim, head_hidden_dim, num_classes, dropout=head_dropout)
+    elif head_name == "linear":
+        head = LinearHead(head_in_dim, num_classes)
+    elif head_name == "patchtst_hf":
+        if encoder_name != "patchtst" or input_mode != "deep_only":
+            raise ValueError("head_name='patchtst_hf' requires encoder_name='patchtst' and input_mode='deep_only'.")
+        # Reuse the same config already inside the encoder backbone
+        cfg = encoder._backbone.config  # noqa: SLF001 (intentional: minimal wiring)
+        head = PatchTSTHFClassificationHead(cfg, num_classes)
+    else:
+        raise ValueError("Unknown head_name. Use 'mlp', 'linear', or 'patchtst_hf'.")
 
     return HybridModel(encoder, tsfel_branch, fusion, head, input_mode)

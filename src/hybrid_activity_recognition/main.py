@@ -78,12 +78,23 @@ def parse_args():
     p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
 
     # --- PatchTST-specific ---
+    p.add_argument("--context_length", type=int, default=75, help="Window length T used by PatchTST.")
     p.add_argument("--patchtst_d_model", type=int, default=128)
     p.add_argument("--patchtst_num_layers", type=int, default=3)
     p.add_argument("--patchtst_num_heads", type=int, default=4)
     p.add_argument("--patchtst_patch_length", type=int, default=8)
     p.add_argument("--patchtst_patch_stride", type=int, default=8)
     p.add_argument("--patchtst_dropout", type=float, default=0.1)
+    p.add_argument("--patchtst_revin", dest="patchtst_revin", action="store_true")
+    p.add_argument("--no_patchtst_revin", dest="patchtst_revin", action="store_false")
+    p.set_defaults(patchtst_revin=True)
+    p.add_argument(
+        "--head",
+        type=str,
+        default="mlp",
+        choices=("mlp", "linear", "patchtst_hf"),
+        help="Classification head: mlp | linear | patchtst_hf (requires --model patchtst --input_mode deep_only).",
+    )
 
     # --- Pretrain-specific ---
     p.add_argument("--pretrain_epochs", type=int, default=100)
@@ -101,13 +112,14 @@ def _build_encoder_kwargs(args) -> dict:
     # PatchTST kwargs (only used if encoder_name == "patchtst")
     if args.model in ("patchtst",):
         kwargs.update(
-            context_length=75,
+            context_length=args.context_length,
             d_model=args.patchtst_d_model,
             num_heads=args.patchtst_num_heads,
             num_layers=args.patchtst_num_layers,
             patch_length=args.patchtst_patch_length,
             patch_stride=args.patchtst_patch_stride,
             dropout=args.patchtst_dropout,
+            revin=args.patchtst_revin,
         )
         if args.patchtst_checkpoint:
             kwargs["pretrained_path"] = args.patchtst_checkpoint
@@ -161,13 +173,14 @@ def main():
         resume = args.checkpoint if args.checkpoint else None
         best_path = trainer.train(
             train_dl,
-            context_length=75,
+            context_length=args.context_length,
             patch_length=args.patchtst_patch_length,
             patch_stride=args.patchtst_patch_stride,
             d_model=args.patchtst_d_model,
             num_heads=args.patchtst_num_heads,
             num_layers=args.patchtst_num_layers,
             dropout=args.patchtst_dropout,
+            revin=args.patchtst_revin,
             mask_ratio=args.pretrain_mask_ratio,
             epochs=args.pretrain_epochs,
             lr=args.pretrain_lr,
@@ -185,6 +198,7 @@ def main():
             input_mode=args.input_mode,
             num_classes=num_classes,
             n_tsfel_feats=n_feats,
+        head_name=args.head,
             **encoder_kwargs,
         ).to(device)
         ckpt = args.checkpoint or str(out / "best.pt")
@@ -205,6 +219,7 @@ def main():
         input_mode=args.input_mode,
         num_classes=num_classes,
         n_tsfel_feats=n_feats,
+        head_name=args.head,
         **encoder_kwargs,
     ).to(device)
     trainer = Trainer(model, device, out)
