@@ -4,6 +4,7 @@ Parquet bruto (série longa) → Parquet janelado + TSFEL, alinhado ao legado wi
 
 Modo discover (sem --feature-manifest-in): amostra + RF escolhe top-N colunas TSFEL; grava manifest JSON.
 Modo apply (--feature-manifest-in): só extrai as colunas do manifest (para teste sem vazamento).
+Skewness/Kurtosis (domínios statistical e spectral) não entram na extração TSFEL.
 
 Um ficheiro de entrada por execução.
 
@@ -35,6 +36,13 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.feature_selection import VarianceThreshold
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+
+# Residual scipy moment warnings if other stats hit near-constant windows.
+warnings.filterwarnings(
+    "ignore",
+    message="Precision loss occurred in moment calculation due to catastrophic cancellation",
+    category=RuntimeWarning,
+)
 
 
 LABEL_MAP = {
@@ -84,6 +92,21 @@ RAW_TO_CANONICAL = {
 def map_behavior(label: str) -> str:
     normalized = str(label).lower().strip()
     return RAW_TO_CANONICAL.get(normalized, "Other")
+
+
+def tsfel_feature_config() -> dict:
+    """TSFEL domain config without skew/kurtosis (statistical and spectral)."""
+    cfg = tsfel.get_features_by_domain()
+    for domain, name in (
+        ("statistical", "Skewness"),
+        ("statistical", "Kurtosis"),
+        ("spectral", "Spectral skewness"),
+        ("spectral", "Spectral kurtosis"),
+    ):
+        feats = cfg.get(domain)
+        if feats is not None and name in feats:
+            del feats[name]
+    return cfg
 
 
 def create_windowed_dataframe(
@@ -167,7 +190,7 @@ def discover_top_features(
         pd.DataFrame({"accX": row["acc_x"], "accY": row["acc_y"], "accZ": row["acc_z"]})
         for _, row in sample_df.iterrows()
     ]
-    cfg = tsfel.get_features_by_domain()
+    cfg = tsfel_feature_config()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         X = tsfel.time_series_features_extractor(cfg, tsfel_input, fs=fs, verbose=0)
@@ -204,7 +227,7 @@ def extract_tsfel_batched(
         pd.DataFrame({"accX": r[0], "accY": r[1], "accZ": r[2]})
         for r in zip(df_main["acc_x"], df_main["acc_y"], df_main["acc_z"])
     ]
-    cfg = tsfel.get_features_by_domain()
+    cfg = tsfel_feature_config()
     all_parts = []
     n = len(tsfel_input_full)
     total_batches = (n // batch_size) + (1 if n % batch_size else 0)
