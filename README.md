@@ -60,14 +60,14 @@ Run this sequence end-to-end:
 source venv/bin/activate
 export PYTHONPATH=src
 
-# 1) Raw CSV -> train/test (80/20 stratified by behaviour)
+# 1) Raw CSV -> train/test (80/20 subject-disjoint split: uses scripts/genSplit.py from original dataset paper)
 python scripts/dataset_processing.py \
   --csv dataset/AcTBeCalf.csv \
   --out-dir dataset/processed \
   --split-by behavior \
+  --subject-column calfId \
   --behavior-column behaviour \
-  --test-fraction 0.2 \
-  --random-state 42
+  --test-fraction 0.2
 
 # 2) Window train (discover TSFEL top-K + save manifest)
 python scripts/prepare_windowed_parquet.py \
@@ -87,7 +87,7 @@ bash scripts/experiments/run_all.sh
 
 ### 1. Prepare Data
 
-**Step 1a: Split raw CSV by behavior (stratified train/test split)**
+**Step 1a: Split raw CSV by behavior (subject-disjoint split via `genSplit`)**
 
 ```bash
 python scripts/dataset_processing.py \
@@ -95,8 +95,11 @@ python scripts/dataset_processing.py \
   --out-dir dataset/processed
 ```
 
-Output: `dataset/processed/AcTBeCalf/{train,test}.parquet` (long-form time series).
-Default split: 80/20 stratified by `behaviour`. Use `--split-by subject` if you need the old cow-level split.
+Output: `dataset/processed/AcTBeCalf/{train,test}.parquet` (long-form time series) and **`split_report.json`**: total row counts, `train_ids` / `test_ids` (subjects), per-split behaviour **counts** and **proportions**, plus method metadata (`genSplit` details when applicable).
+
+Default `--split-by behavior`: **disjoint calves** (`--subject-column`, default `calfId`): the test set is chosen with `genSplit.find_optimal_calf_combinations_for_split` so that, per class, the ratio (test counts / train counts) stays close to `test_fraction / (1 - test_fraction)`, with no random row sampling. This matches the holstein-style protocol (see `scripts/genSplit.py`).
+
+- For a **fixed list** of test animals, use `--split-by subject --test-subjects ...`.
 
 **Step 1b: Window + extract TSFEL features**
 
@@ -234,7 +237,7 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main --help
 
 **Pipeline:**
 
-1. **Train/test split** (default: stratified by behavior):
+1. **Train/test split** (default: `genSplit`-style disjoint subjects + label proportions; see Step 1a):
    ```bash
    python scripts/dataset_processing.py \
      --csv dataset/AcTBeCalf.csv \
@@ -467,7 +470,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 ### Adapting to a New Dataset
 
-1. Ensure raw CSV has columns: `datetime`, `subject`, `acc_x`, `acc_y`, `acc_z`, `label` (or use `--column-map` in `dataset_processing.py`).
+1. Ensure raw CSV matches the expected schema (e.g. `dateTime`, `calfId`, `accX`/`accY`/`accZ`, `behaviour`) or adapt column names in the processing scripts.
 2. Run the same 3-step pipeline (split → window → train).
 3. Update `DATASET_ID` in `scripts/experiments/_common.sh` for proper run naming.
 
@@ -524,7 +527,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 - **Seed control:** `--seed` sets `random`, `numpy`, and `torch` seeds.
 - **Deterministic ops:** `CUBLAS_WORKSPACE_CONFIG=:4096:8` set by `utils/repro.py`.
-- **Data splits:** Default is stratified 80/20 by behavior. Subject-based split is optional via `--split-by subject`.
+- **Data splits:** `dataset_processing.py --split-by behavior` uses **disjoint subjects** and `genSplit.find_optimal_calf_combinations_for_split`. Fixed test herds: `--split-by subject`.
 - **Normalization:** Statistics computed only on training set, applied to val/test.
 - **TSFEL features:** Manifest ensures test uses the same features as training.
 

@@ -1,37 +1,32 @@
 #!/usr/bin/env python3
 """
-Separa um CSV em treino / teste por comportamento ou por sujeito.
+CSV → train/test Parquet + split_report.json.
 
-Modo padrão: split estratificado por comportamento (20% para teste), preservando
-a proporção das classes.
+- --split-by behavior: sujeitos disjuntos; teste escolhido com genSplit (ver scripts/genSplit.py).
+- --split-by subject: sujeitos de teste fixos (--test-subjects).
 
-Modo alternativo: split por sujeito, usando os valores em --test-subjects.
-
-Saída: Parquet em {out_dir}/{nome_do_csv_sem_extensão}/train.parquet e test.parquet (pyarrow).
-    Ex.: dataset/processed/AcTBeCalf/train.parquet
-
-Uso:
-    python scripts/dataset_processing.py
-    python scripts/dataset_processing.py --csv dataset/AcTBeCalf.csv --out-dir dataset/processed
-    python scripts/dataset_processing.py --split-by subject --subject-column calfId --test-subjects 1329 1343
+Saída: {out_dir}/{csv_stem}/train.parquet, test.parquet, split_report.json
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import warnings
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
+
+import genSplit
 
 DEFAULT_TEST_SUBJECTS = (1329, 1343, 1353, 1357, 1372)
 DEFAULT_TEST_FRACTION = 0.2
 DEFAULT_BEHAVIOR_COLUMN = "behaviour"
 
 
-def _test_values_for_column(series: pd.Series, raw: list[str]) -> set:
-    """Alinha tipos dos argumentos ao dtype da coluna."""
+def _coerce_subject_values(series: pd.Series, raw: list[str]) -> set:
     if pd.api.types.is_integer_dtype(series):
         return {int(x) for x in raw}
     if pd.api.types.is_float_dtype(series):
@@ -39,159 +34,219 @@ def _test_values_for_column(series: pd.Series, raw: list[str]) -> set:
     return set(raw)
 
 
-def _split_by_subject(
+def _require_columns(df: pd.DataFrame, *names: str) -> None:
+    missing = [c for c in names if c not in df.columns]
+    if missing:
+        raise SystemExit(f"Colunas em falta: {missing}. Ex.: {list(df.columns)[:30]}...")
+
+
+def _subject_behavior_wide(df: pd.DataFrame, subject_col: str, behavior_col: str) -> pd.DataFrame:
+    """Matriz larga esperada por genSplit: subject_id + uma coluna por classe (contagens)."""
+    g = df.groupby([subject_col, behavior_col], sort=False).size().rename("n").reset_index()
+    wide = g.pivot(index=subject_col, columns=behavior_col, values="n").fillna(0).astype(np.int64)
+    return wide.reset_index().rename(columns={subject_col: "subject_id"})
+
+
+def _label_distribution(series: pd.Series) -> dict:
+    vc = series.value_counts(dropna=False)
+    total = int(vc.sum())
+    counts = {str(k): int(v) for k, v in vc.items()}
+    prop = {k: (counts[k] / total if total else 0.0) for k in counts}
+    return {"counts": counts, "proportions": prop}
+
+
+def split_subject_list(
+    df: pd.DataFrame, *, subject_column: str, test_subjects: list[str]
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    _require_columns(df, subject_column)
+    test_ids = _coerce_subject_values(df[subject_column], test_subjects)
+    mask = df[subject_column].isin(test_ids)
+    train, test = df.loc[~mask].reset_index(drop=True), df.loc[mask].reset_index(drop=True)
+    meta = {
+        "name": "subject_fixed_list",
+        "subject_column": subject_column,
+        "test_subject_ids": sorted(test_ids, key=str),
+    }
+    return train, test, meta
+
+
+def split_behavior_gen_split(
     df: pd.DataFrame,
     *,
     subject_column: str,
-    test_subjects: list[str],
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    if subject_column not in df.columns:
-        raise SystemExit(f"Coluna inexistente: {subject_column!r}. Colunas: {list(df.columns)}")
-
-    test_set = _test_values_for_column(df[subject_column], test_subjects)
-    mask_test = df[subject_column].isin(test_set)
-    df_test = df.loc[mask_test].reset_index(drop=True)
-    df_train = df.loc[~mask_test].reset_index(drop=True)
-    return df_train, df_test
-
-
-def _split_by_behavior(
-    df: pd.DataFrame,
-    *,
     behavior_column: str,
     test_fraction: float,
-    random_state: int,
-) -> tuple[pd.DataFrame, pd.DataFrame]:
-    if behavior_column not in df.columns:
-        raise SystemExit(f"Coluna inexistente: {behavior_column!r}. Colunas: {list(df.columns)}")
+    max_combinations: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    _require_columns(df, subject_column, behavior_column)
     if not 0 < test_fraction < 1:
         raise SystemExit("--test-fraction deve estar entre 0 e 1.")
 
-    counts = df[behavior_column].value_counts(dropna=False)
-    use_stratify = counts.min() >= 2
-    if not use_stratify:
+    train_pct = round(100.0 * (1.0 - test_fraction))
+    test_pct = round(100.0 * test_fraction)
+    if train_pct + test_pct != 100:
+        raise SystemExit(
+            f"Escolha --test-fraction tal que (1-f)×100 e f×100 sejam inteiros que somem 100; "
+            f"obtido train={train_pct}% test={test_pct}%."
+        )
+
+    wide = _subject_behavior_wide(df, subject_column, behavior_column)
+    subjects = sorted(wide["subject_id"].unique().tolist())
+    n_sub = len(subjects)
+    if n_sub < 2:
+        raise SystemExit("São necessários pelo menos 2 sujeitos.")
+
+    n_tr, n_val, n_te = genSplit.calc_split_subject_amounts(
+        n_sub, {"train": float(train_pct), "validation": 0.0, "test": float(test_pct)}
+    )
+    if n_val != 0 or n_te < 1 or n_tr < 1:
+        raise SystemExit(f"Contagem inválida de sujeitos: train={n_tr} val={n_val} test={n_te} (n={n_sub}).")
+
+    n_comb = math.comb(n_sub, n_te)
+    if n_comb > max_combinations:
+        raise SystemExit(
+            f"C({n_sub},{n_te}) = {n_comb:,} combinações (> --max-combinations={max_combinations})."
+        )
+
+    ratio = test_fraction / (1.0 - test_fraction)
+    test_tuple = genSplit.find_optimal_calf_combinations_for_split(
+        tuple(subjects), n_te, wide, ratio, cv=1
+    )
+    if test_tuple is None:
+        raise SystemExit(
+            "genSplit não encontrou combinação válida (todas as classes devem permanecer no treino). "
+            "Ajuste --test-fraction ou verifique classes raras."
+        )
+
+    test_ids = set(test_tuple)
+    mask = df[subject_column].isin(test_ids)
+    train, test = df.loc[~mask].reset_index(drop=True), df.loc[mask].reset_index(drop=True)
+
+    meta = {
+        "split": "behavior_subject_genSplit",
+        "subject_column": subject_column,
+        "behavior_column": behavior_column,
+        "test_fraction_subjects": test_pct / 100.0,
+        "split_ratio_target": ratio,
+        "n_subjects_total": n_sub,
+        "n_subjects_train": n_sub - len(test_ids),
+        "n_subjects_test": len(test_ids),
+        "test_subject_ids": sorted(test_ids, key=str),
+    }
+    return train, test, meta
+
+
+def build_split_report(
+    df_full: pd.DataFrame,
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    *,
+    subject_column: str,
+    behavior_column: str,
+    method: dict,
+) -> dict:
+    _require_columns(train, subject_column)
+    _require_columns(test, subject_column)
+
+    def _subject_ids(frame: pd.DataFrame) -> list:
+        return sorted(frame[subject_column].dropna().unique().tolist(), key=str)
+
+    report: dict = {
+        "schema_version": 1,
+        "samples": {"total": len(df_full), "train": len(train), "test": len(test)},
+        "subjects": {
+            "column": subject_column,
+            "train_ids": _subject_ids(train),
+            "test_ids": _subject_ids(test),
+            "n_subjects_train": int(train[subject_column].nunique()),
+            "n_subjects_test": int(test[subject_column].nunique()),
+        },
+        "behavior_distribution": None,
+        "method": method,
+    }
+
+    if behavior_column in train.columns and behavior_column in test.columns:
+        report["behavior_distribution"] = {
+            "column": behavior_column,
+            "train": _label_distribution(train[behavior_column]),
+            "test": _label_distribution(test[behavior_column]),
+        }
+    elif behavior_column and behavior_column not in df_full.columns:
         warnings.warn(
-            f"Split sem estratificação: a coluna {behavior_column!r} tem classes com menos de 2 amostras.",
+            f"Coluna {behavior_column!r} ausente; behavior_distribution fica null.",
             RuntimeWarning,
             stacklevel=2,
         )
 
-    train_idx, test_idx = train_test_split(
-        df.index,
-        test_size=test_fraction,
-        stratify=df[behavior_column] if use_stratify else None,
-        random_state=random_state,
-        shuffle=True,
-    )
-    df_train = df.loc[train_idx].reset_index(drop=True)
-    df_test = df.loc[test_idx].reset_index(drop=True)
-    return df_train, df_test
+    return report
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Split CSV train/test por comportamento ou sujeito → Parquet"
-    )
-    parser.add_argument(
-        "--csv",
-        type=Path,
-        default=Path("dataset/AcTBeCalf.csv"),
-        help="CSV fonte",
-    )
-    parser.add_argument(
-        "--out-dir",
-        type=Path,
-        default=Path("dataset/processed"),
-        help="Pasta base; dentro dela é criada uma subpasta com o nome do CSV (stem)",
-    )
-    parser.add_argument(
-        "--subject-column",
-        default="calfId",
-        help="Nome da coluna usada no split por sujeito",
-    )
-    parser.add_argument(
-        "--test-subjects",
-        type=str,
-        nargs="*",
-        default=[str(x) for x in DEFAULT_TEST_SUBJECTS],
-        help="Valores dessa coluna que vão para o teste quando --split-by subject",
-    )
-    parser.add_argument(
+    p = argparse.ArgumentParser(description="CSV train/test → Parquet + split_report.json")
+    p.add_argument("--csv", type=Path, default=Path("dataset/AcTBeCalf.csv"))
+    p.add_argument("--out-dir", type=Path, default=Path("dataset/processed"))
+    p.add_argument("--subject-column", default="calfId")
+    p.add_argument("--test-subjects", type=str, nargs="*", default=[str(x) for x in DEFAULT_TEST_SUBJECTS])
+    p.add_argument(
         "--split-by",
         choices=("behavior", "subject"),
         default="behavior",
-        help="Modo de split: behavior = estratificado por comportamento; subject = por sujeito",
+        help="behavior = genSplit por sujeito; subject = --test-subjects fixos",
     )
-    parser.add_argument(
-        "--behavior-column",
-        default=DEFAULT_BEHAVIOR_COLUMN,
-        help="Nome da coluna usada para estratificar o split por comportamento",
-    )
-    parser.add_argument(
-        "--test-fraction",
-        type=float,
-        default=DEFAULT_TEST_FRACTION,
-        help="Fração reservada para teste quando --split-by behavior",
-    )
-    parser.add_argument(
-        "--random-state",
-        type=int,
-        default=42,
-        help="Seed usada no split por comportamento",
-    )
-    args = parser.parse_args()
+    p.add_argument("--max-combinations", type=int, default=2_000_000)
+    p.add_argument("--behavior-column", default=DEFAULT_BEHAVIOR_COLUMN)
+    p.add_argument("--test-fraction", type=float, default=DEFAULT_TEST_FRACTION)
+    args = p.parse_args()
 
     if not args.csv.is_file():
         raise SystemExit(f"Arquivo não encontrado: {args.csv}")
 
+    out = args.out_dir / args.csv.stem
+    out.mkdir(parents=True, exist_ok=True)
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    dataset_dir = args.out_dir / args.csv.stem
-    dataset_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Lendo {args.csv} ...")
     df = pd.read_csv(args.csv)
 
     if args.split_by == "subject":
-        col = args.subject_column
-        df_train, df_test = _split_by_subject(
-            df,
-            subject_column=col,
-            test_subjects=args.test_subjects,
+        train, test, method = split_subject_list(
+            df, subject_column=args.subject_column, test_subjects=args.test_subjects
         )
-        split_summary = (
-            f"Coluna: {col} | test_subjects="
-            f"{sorted(_test_values_for_column(df[col], args.test_subjects), key=str)!r}"
-        )
+        tid = method["test_subject_ids"]
+        summary = f"subject (lista fixa) | col={args.subject_column!r} | test={tid!r}"
     else:
-        col = args.behavior_column
-        df_train, df_test = _split_by_behavior(
+        train, test, method = split_behavior_gen_split(
             df,
-            behavior_column=col,
+            subject_column=args.subject_column,
+            behavior_column=args.behavior_column,
             test_fraction=args.test_fraction,
-            random_state=args.random_state,
+            max_combinations=args.max_combinations,
         )
-        split_summary = (
-            f"Coluna: {col} | test_fraction={args.test_fraction:.2f} | "
-            f"random_state={args.random_state}"
+        summary = (
+            f"behavior + genSplit | subject={args.subject_column!r} "
+            f"| behavior={args.behavior_column!r} | test_fraction={args.test_fraction:.2f}"
         )
 
     n = len(df)
-    n_train, n_test = len(df_train), len(df_test)
     print(
-        f"{split_summary}\n"
-        f"Total: {n:,} | Treino: {n_train:,} ({100 * n_train / n:.2f}%) | "
-        f"Teste: {n_test:,} ({100 * n_test / n:.2f}%)"
+        f"{summary}\n"
+        f"Total: {n:,} | Treino: {len(train):,} ({100 * len(train) / n:.2f}%) | "
+        f"Teste: {len(test):,} ({100 * len(test) / n:.2f}%)"
     )
 
-    path_train = dataset_dir / "train.parquet"
-    path_test = dataset_dir / "test.parquet"
+    path_train, path_test = out / "train.parquet", out / "test.parquet"
+    train.to_parquet(path_train, engine="pyarrow", compression="snappy", index=False)
+    test.to_parquet(path_test, engine="pyarrow", compression="snappy", index=False)
 
-    df_train.to_parquet(path_train, engine="pyarrow", compression="snappy", index=False)
-    df_test.to_parquet(path_test, engine="pyarrow", compression="snappy", index=False)
-
-    print(f"Pasta:   {dataset_dir.resolve()}")
-    print(f"Treino:  {path_train.resolve()}")
-    print(f"Teste:   {path_test.resolve()}")
+    report = build_split_report(
+        df, train, test,
+        subject_column=args.subject_column,
+        behavior_column=args.behavior_column,
+        method=method,
+    )
+    path_report = out / "split_report.json"
+    path_report.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
+    print(f"Relatório: {path_report.resolve()}\nPasta: {out.resolve()}\nTreino: {path_train.resolve()}\nTeste: {path_test.resolve()}")
 
 
 if __name__ == "__main__":
