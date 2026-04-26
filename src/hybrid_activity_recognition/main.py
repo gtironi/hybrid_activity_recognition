@@ -56,7 +56,7 @@ def parse_args():
     p.add_argument("--labeled_parquet_train", type=str, default="", help="Windowed parquet for training.")
     p.add_argument("--labeled_parquet_test", type=str, default="", help="Windowed parquet for testing.")
     p.add_argument("--labeled_parquet_val", type=str, default="", help="Optional validation parquet.")
-    p.add_argument("--val_fraction", type=float, default=0.05, help="Stratified val fraction from train.")
+    p.add_argument("--val_fraction", type=float, default=0.1, help="Stratified val fraction from train.")
     p.add_argument("--pretrain_parquet", type=str, default="", help="Windowed parquet for PatchTST pretraining.")
 
     # --- Checkpoints ---
@@ -65,26 +65,41 @@ def parse_args():
     p.add_argument("--output_dir", type=str, default="experiments/runs")
 
     # --- Training hyperparameters ---
-    p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--seed", type=int, default=2026)
     p.add_argument("--device", type=str, default="cuda", help="cuda or cpu")
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--num_workers", type=int, default=2)
-    p.add_argument("--epochs", type=int, default=50)
+    p.add_argument("--epochs", type=int, default=1000)
     p.add_argument("--lr", type=float, default=None, help="Learning rate (if omitted, uses mode default)")
     p.add_argument("--hidden_lstm", type=int, default=None)
     p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
+    p.add_argument(
+        "--freeze_encoder",
+        action="store_true",
+        help="Supervised/finetune: freeze signal encoder (train head / TSFEL / fusion only).",
+    )
 
     # --- PatchTST-specific ---
     p.add_argument("--context_length", type=int, default=75, help="Window length T used by PatchTST.")
-    p.add_argument("--patchtst_d_model", type=int, default=128)
-    p.add_argument("--patchtst_num_layers", type=int, default=3)
-    p.add_argument("--patchtst_num_heads", type=int, default=4)
-    p.add_argument("--patchtst_patch_length", type=int, default=8)
-    p.add_argument("--patchtst_patch_stride", type=int, default=8)
-    p.add_argument("--patchtst_dropout", type=float, default=0.1)
-    p.add_argument("--patchtst_revin", dest="patchtst_revin", action="store_true")
-    p.add_argument("--no_patchtst_revin", dest="patchtst_revin", action="store_false")
-    p.set_defaults(patchtst_revin=True)
+    p.add_argument("--patch_len", type=int, default=12, help="Patch length (PatchTST).")
+    p.add_argument("--stride", type=int, default=12, help="Stride between patches (PatchTST).")
+    p.add_argument("--revin", type=int, default=1, choices=(0, 1), help="Reversible instance normalization (1=on).")
+    p.add_argument("--n_layers", type=int, default=3, help="Number of Transformer layers (PatchTST).")
+    p.add_argument("--n_heads", type=int, default=16, help="Number of attention heads (PatchTST).")
+    p.add_argument("--d_model", type=int, default=128, help="Transformer d_model (PatchTST).")
+    p.add_argument("--d_ff", type=int, default=512, help="Transformer FFN dimension (PatchTST).")
+    p.add_argument(
+        "--dropout",
+        type=float,
+        default=0.2,
+        help="PatchTST attention + feed-forward dropout (ignored for non-PatchTST models).",
+    )
+    p.add_argument(
+        "--head_dropout",
+        type=float,
+        default=0.2,
+        help="PatchTST classification head dropout (HF config).",
+    )
     p.add_argument(
         "--head",
         type=str,
@@ -96,7 +111,7 @@ def parse_args():
     # --- Pretrain-specific ---
     p.add_argument("--pretrain_epochs", type=int, default=100)
     p.add_argument("--pretrain_lr", type=float, default=1e-3)
-    p.add_argument("--pretrain_mask_ratio", type=float, default=0.4)
+    p.add_argument("--mask_ratio", type=float, default=0.4, help="MAE masking ratio for PatchTST pretraining.")
 
     return p.parse_args()
 
@@ -110,13 +125,15 @@ def _build_encoder_kwargs(args) -> dict:
     if args.model in ("patchtst",):
         kwargs.update(
             context_length=args.context_length,
-            d_model=args.patchtst_d_model,
-            num_heads=args.patchtst_num_heads,
-            num_layers=args.patchtst_num_layers,
-            patch_length=args.patchtst_patch_length,
-            patch_stride=args.patchtst_patch_stride,
-            dropout=args.patchtst_dropout,
-            revin=args.patchtst_revin,
+            d_model=args.d_model,
+            num_heads=args.n_heads,
+            num_layers=args.n_layers,
+            patch_length=args.patch_len,
+            patch_stride=args.stride,
+            dropout=args.dropout,
+            head_dropout=args.head_dropout,
+            ffn_dim=args.d_ff,
+            revin=bool(args.revin),
         )
         if args.patchtst_checkpoint:
             kwargs["pretrained_path"] = args.patchtst_checkpoint
@@ -171,14 +188,16 @@ def main():
         best_path = trainer.train(
             train_dl,
             context_length=args.context_length,
-            patch_length=args.patchtst_patch_length,
-            patch_stride=args.patchtst_patch_stride,
-            d_model=args.patchtst_d_model,
-            num_heads=args.patchtst_num_heads,
-            num_layers=args.patchtst_num_layers,
-            dropout=args.patchtst_dropout,
-            revin=args.patchtst_revin,
-            mask_ratio=args.pretrain_mask_ratio,
+            patch_length=args.patch_len,
+            patch_stride=args.stride,
+            d_model=args.d_model,
+            num_heads=args.n_heads,
+            num_layers=args.n_layers,
+            dropout=args.dropout,
+            head_dropout=args.head_dropout,
+            ffn_dim=args.d_ff,
+            revin=bool(args.revin),
+            mask_ratio=args.mask_ratio,
             epochs=args.pretrain_epochs,
             lr=args.pretrain_lr,
             resume_from=resume,
@@ -234,6 +253,7 @@ def main():
             lr=lr,
             use_class_weights=not args.no_class_weights,
             resume_from=resume,
+            freeze_encoder=args.freeze_encoder,
         )
         res = trainer.evaluate(test_dl, out / "best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
@@ -244,7 +264,12 @@ def main():
         load_from = args.checkpoint or (out / "best.pt")
         lr = args.lr if args.lr is not None else 1e-4
         if trainer.finetune(
-            train_dl, val_dl, load_path=load_from, epochs=args.epochs, lr=lr
+            train_dl,
+            val_dl,
+            load_path=load_from,
+            epochs=args.epochs,
+            lr=lr,
+            freeze_encoder=args.freeze_encoder,
         ) is None:
             raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
         res = trainer.evaluate(test_dl, out / "finetuned_best.pt")

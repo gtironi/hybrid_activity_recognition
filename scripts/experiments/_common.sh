@@ -14,20 +14,29 @@ PRETRAIN_PARQUET="${PRETRAIN_PARQUET:-${TRAIN_PARQUET}}"
 DATASET_ID="${DATASET_ID:-AcTBeCalf}"
 
 # --- Default hyperparameters ---
-SEED="${SEED:-42}"
+SEED="${SEED:-2026}"
 DEVICE="${DEVICE:-cuda}"
-EPOCHS="${EPOCHS:-150}"
-BATCH_SIZE="${BATCH_SIZE:-256}"
+EPOCHS="${EPOCHS:-100}"
+VAL_FRACTION="${VAL_FRACTION:-0.1}"
 LR="${LR:-1e-3}"
 PRETRAIN_EPOCHS="${PRETRAIN_EPOCHS:-100}"
 PRETRAIN_LR="${PRETRAIN_LR:-1e-3}"
+# Larger batches for CNN/LSTM/robust/TSFEL-MLP; PatchTST scripts set PATCHTST_BATCH_SIZE.
+BATCH_SIZE_LARGE="${BATCH_SIZE_LARGE:-512}"
+PATCHTST_BATCH_SIZE="${PATCHTST_BATCH_SIZE:-128}"
+BATCH_SIZE="${BATCH_SIZE:-${BATCH_SIZE_LARGE}}"
 
 # --- Helpers ---
 
 make_run_dir() {
     # Usage: make_run_dir MODEL MODE
+    # Optional RUN_SUFFIX (e.g. fromscratch, frompretrain_hf) disambiguates PatchTST runs.
     local MODEL="$1" MODE="$2"
-    echo "${REPO_ROOT}/experiments/${MODEL}_${MODE}_${DATASET_ID}_ep${EPOCHS}_bs${BATCH_SIZE}_lr${LR}_s${SEED}"
+    local suf="${RUN_SUFFIX:-}"
+    if [ -n "$suf" ]; then
+        suf="_${suf}"
+    fi
+    echo "${REPO_ROOT}/experiments/${MODEL}_${MODE}${suf}_${DATASET_ID}_ep${EPOCHS}_bs${BATCH_SIZE}_lr${LR}_s${SEED}"
 }
 
 run_experiment() {
@@ -45,6 +54,10 @@ run_experiment() {
     mkdir -p "${OUT}"
 
     echo ">>> Starting ${MODEL}_${MODE} at $(date)"
+    local FREEZE_ARGS=()
+    if [ "${FREEZE_ENCODER:-0}" = "1" ]; then
+        FREEZE_ARGS+=(--freeze_encoder)
+    fi
     if [ -f "${OUT}/checkpoint.pt" ]; then
         echo ">>> Checkpoint found at ${OUT}/checkpoint.pt, resuming..."
         python -m hybrid_activity_recognition.main \
@@ -59,7 +72,9 @@ run_experiment() {
             --lr "$LR" \
             --seed "$SEED" \
             --device "$DEVICE" \
+            --val_fraction "$VAL_FRACTION" \
             --checkpoint "${OUT}/checkpoint.pt" \
+            "${FREEZE_ARGS[@]}" \
             "$@" \
             2>&1 | tee -a "${OUT}/train.log"
     else
@@ -75,6 +90,8 @@ run_experiment() {
             --lr "$LR" \
             --seed "$SEED" \
             --device "$DEVICE" \
+            --val_fraction "$VAL_FRACTION" \
+            "${FREEZE_ARGS[@]}" \
             "$@" \
             2>&1 | tee -a "${OUT}/train.log"
     fi

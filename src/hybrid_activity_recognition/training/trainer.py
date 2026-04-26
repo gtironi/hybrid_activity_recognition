@@ -15,6 +15,10 @@ from hybrid_activity_recognition.training.loss import balanced_class_weights, su
 logger = logging.getLogger(__name__)
 
 
+def _iter_trainable_params(model: nn.Module):
+    return (p for p in model.parameters() if p.requires_grad)
+
+
 class Trainer:
     """Supervised training, fine-tuning, and val/test evaluation loops."""
 
@@ -23,6 +27,15 @@ class Trainer:
         self.device = device
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+
+    def _apply_signal_encoder_freeze(self, freeze: bool) -> None:
+        """Freeze (or unfreeze) the signal encoder only (PatchTST / CNN+LSTM / robust)."""
+        enc = getattr(self.model, "encoder", None)
+        if enc is None or type(enc).__name__ == "NullSignalEncoder":
+            return
+        for p in enc.parameters():
+            p.requires_grad = not freeze
+        logger.info("Signal encoder requires_grad=%s", not freeze)
 
     def train_supervised(
         self,
@@ -39,34 +52,41 @@ class Trainer:
         grad_clip: float = 1.0,
         checkpoint_name: str = "best.pt",
         resume_from: str | Path | None = None,
+        freeze_encoder: bool = False,
     ) -> nn.Module:
-        labels = train_dl.dataset.labels.cpu().numpy()
-        cw = None
-        if use_class_weights:
-            cw = balanced_class_weights(labels, num_classes).to(self.device)
-        criterion = supervised_loss_fn(cw)
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", patience=scheduler_patience, factor=scheduler_factor
-        )
-
         best_wts = copy.deepcopy(self.model.state_dict())
         best_acc = 0.0
         stall = 0
         start_epoch = 0
         ckpt_path = self.output_dir / checkpoint_name
-
-        # Resume from checkpoint
+        resume_ckpt = None
         if resume_from is not None and Path(resume_from).is_file():
-            ckpt = torch.load(resume_from, map_location=self.device, weights_only=True)
-            self.model.load_state_dict(ckpt["model_state_dict"])
-            optimizer.load_state_dict(ckpt["optimizer_state_dict"])
-            scheduler.load_state_dict(ckpt["scheduler_state_dict"])
-            best_acc = ckpt["best_acc"]
-            best_wts = ckpt["best_wts"]
-            stall = ckpt["stall"]
-            start_epoch = ckpt["epoch"] + 1
+            resume_ckpt = torch.load(resume_from, map_location=self.device, weights_only=True)
+            self.model.load_state_dict(resume_ckpt["model_state_dict"])
+            best_acc = resume_ckpt["best_acc"]
+            best_wts = resume_ckpt["best_wts"]
+            stall = resume_ckpt["stall"]
+            start_epoch = resume_ckpt["epoch"] + 1
             logger.info("Resuming training from epoch %d (best_acc=%.2f%%)", start_epoch, best_acc)
+
+        self._apply_signal_encoder_freeze(freeze_encoder)
+
+        labels = train_dl.dataset.labels.cpu().numpy()
+        cw = None
+        if use_class_weights:
+            cw = balanced_class_weights(labels, num_classes).to(self.device)
+        criterion = supervised_loss_fn(cw)
+        optimizer = torch.optim.AdamW(_iter_trainable_params(self.model), lr=lr, weight_decay=weight_decay)
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, mode="min", patience=scheduler_patience, factor=scheduler_factor
+        )
+
+        if resume_ckpt is not None and not freeze_encoder and "optimizer_state_dict" in resume_ckpt:
+            try:
+                optimizer.load_state_dict(resume_ckpt["optimizer_state_dict"])
+                scheduler.load_state_dict(resume_ckpt["scheduler_state_dict"])
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Could not load optimizer/scheduler state (%s); starting fresh.", e)
 
         for epoch in range(start_epoch, epochs):
             self.model.train()
@@ -80,7 +100,9 @@ class Trainer:
                 loss = criterion(logits, y)
                 loss.backward()
                 if grad_clip:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
+                    torch.nn.utils.clip_grad_norm_(
+                        list(_iter_trainable_params(self.model)), grad_clip
+                    )
                 optimizer.step()
                 train_loss += loss.item() * x_sig.size(0)
                 correct += (logits.argmax(1) == y).sum().item()
@@ -148,15 +170,17 @@ class Trainer:
         scheduler_factor: float = 0.5,
         grad_clip: float = 1.0,
         checkpoint_name: str = "finetuned_best.pt",
+        freeze_encoder: bool = False,
     ) -> nn.Module | None:
         load_path = Path(load_path)
         if not load_path.is_file():
             logger.warning("Checkpoint not found: %s", load_path)
             return None
         self.model.load_state_dict(torch.load(load_path, map_location=self.device, weights_only=True))
+        self._apply_signal_encoder_freeze(freeze_encoder)
 
         criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
+        optimizer = torch.optim.AdamW(_iter_trainable_params(self.model), lr=lr, weight_decay=weight_decay)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", patience=scheduler_patience, factor=scheduler_factor
         )
@@ -174,7 +198,9 @@ class Trainer:
                 loss = criterion(logits, y)
                 loss.backward()
                 if grad_clip:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
+                    torch.nn.utils.clip_grad_norm_(
+                        list(_iter_trainable_params(self.model)), grad_clip
+                    )
                 optimizer.step()
                 train_loss += loss.item() * x_sig.size(0)
                 correct += (logits.argmax(1) == y).sum().item()

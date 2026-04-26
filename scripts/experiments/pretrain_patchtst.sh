@@ -2,6 +2,7 @@
 # PatchTST self-supervised MAE pretraining.
 set -euo pipefail
 source "$(dirname "$0")/_common.sh"
+export BATCH_SIZE="${PATCHTST_BATCH_SIZE:-128}"
 
 OUT=$(make_run_dir "patchtst" "pretrain")
 

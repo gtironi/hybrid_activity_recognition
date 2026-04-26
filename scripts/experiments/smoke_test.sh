@@ -44,6 +44,7 @@ else
 		--lr "$LR"
 		--seed "$SEED"
 		--device "$DEVICE"
+		--val_fraction "$VAL_FRACTION"
 	)
 	if [ -f "${PRETRAIN_DIR}/best.pt" ]; then
 		PATCHTST_HF_ARGS+=(--patchtst_checkpoint "${PRETRAIN_DIR}/best.pt")

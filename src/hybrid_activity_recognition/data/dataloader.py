@@ -54,7 +54,7 @@ def prepare_train_val_test_loaders(
     random_state: int = 42,
     val_fraction: float = 0.05,
     parquet_val_path: str | None = None,
-    drop_rare_classes_min_count: int = 2,
+    drop_rare_classes_min_count: int = 4,
 ) -> tuple[DataLoader, DataLoader, DataLoader, np.ndarray, int, int, LabelEncoder]:
     """
     Treino e teste em Parquets distintos (ex.: por sujeito). Ajusta média/desvio do sinal e
@@ -64,11 +64,10 @@ def prepare_train_val_test_loaders(
     """
     df_train = pd.read_parquet(parquet_train_path)
     df_train["label"] = df_train["label"].astype(str)
-    if drop_rare_classes_min_count > 0:
-        counts = df_train["label"].value_counts()
-        rare = counts[counts < drop_rare_classes_min_count].index
-        if len(rare):
-            df_train = df_train[~df_train["label"].isin(rare)].reset_index(drop=True)
+    counts = df_train["label"].value_counts()
+    rare = counts[counts < drop_rare_classes_min_count].index
+    if len(rare):
+        df_train = df_train[~df_train["label"].isin(rare)].reset_index(drop=True)
 
     df_test = pd.read_parquet(parquet_test_path)
     df_test["label"] = df_test["label"].astype(str)
