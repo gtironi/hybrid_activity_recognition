@@ -54,20 +54,16 @@ def prepare_train_val_test_loaders(
     random_state: int = 42,
     val_fraction: float = 0.05,
     parquet_val_path: str | None = None,
-    drop_rare_classes_min_count: int = 4,
 ) -> tuple[DataLoader, DataLoader, DataLoader, np.ndarray, int, int, LabelEncoder]:
     """
     Treino e teste em Parquets distintos (ex.: por sujeito). Ajusta média/desvio do sinal e
     StandardScaler das features TSFEL apenas nas janelas de treino (após split val).
     LabelEncoder fit só no treino. Labels treino/teste devem estar alinhados em
-    scripts/dataset_processing.py; labels desconhecidos em teste/val geram erro explícito.
+    scripts/dataset_processing.py (classes raras removidas lá, não aqui); labels desconhecidos
+    em teste/val geram erro explícito.
     """
     df_train = pd.read_parquet(parquet_train_path)
     df_train["label"] = df_train["label"].astype(str)
-    counts = df_train["label"].value_counts()
-    rare = counts[counts < drop_rare_classes_min_count].index
-    if len(rare):
-        df_train = df_train[~df_train["label"].isin(rare)].reset_index(drop=True)
 
     df_test = pd.read_parquet(parquet_test_path)
     df_test["label"] = df_test["label"].astype(str)
@@ -101,7 +97,7 @@ def prepare_train_val_test_loaders(
     unk_te = set(df_test["label"].unique()) - known
     if unk_te:
         raise ValueError(
-            "Test parquet contains labels not in the training split after rare-class filtering: "
+            "Test parquet contains labels not in the training split: "
             f"{sorted(unk_te)!r}. Regenerate parquets with scripts/dataset_processing.py or align labels."
         )
     if df_test.empty:

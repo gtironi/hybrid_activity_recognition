@@ -4,8 +4,11 @@ CSV → train/test Parquet + split_report.json.
 
 - --split-by behavior: sujeitos disjuntos; teste escolhido com genSplit (ver scripts/genSplit.py).
 - --split-by subject: sujeitos de teste fixos (--test-subjects).
-- Após o split, remove do teste linhas cujo --behavior-column não aparece no treino; o relatório
-  JSON inclui quantas linhas e quais comportamentos foram removidos.
+- Após o split, remove comportamentos com menos de --min-train-samples-per-behavior amostras
+  no treino (e qualquer comportamento que só exista no teste) de **treino e teste** para alinhar
+  labels com o que o modelo pode aprender.
+- Depois, remove do teste linhas cujo --behavior-column não aparece no treino; o relatório JSON
+  inclui quantas linhas e quais comportamentos foram removidos.
 
 Saída: {out_dir}/{csv_stem}/train.parquet, test.parquet, split_report.json
 """
@@ -26,6 +29,7 @@ import genSplit
 DEFAULT_TEST_SUBJECTS = (1329, 1343, 1353, 1357, 1372)
 DEFAULT_TEST_FRACTION = 0.2
 DEFAULT_BEHAVIOR_COLUMN = "behaviour"
+DEFAULT_MIN_TRAIN_SAMPLES_PER_BEHAVIOR = 500
 
 
 def _coerce_subject_values(series: pd.Series, raw: list[str]) -> set:
@@ -97,6 +101,67 @@ def filter_test_behaviors_to_train(
             "Verifique --behavior-column e a distribuição por sujeito."
         )
     return train, test_out, meta
+
+
+def filter_behaviors_below_min_train_count(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    *,
+    behavior_column: str,
+    min_train_samples: int,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """
+    Remove from both train and test every behavior that has fewer than ``min_train_samples``
+    rows in train, and any behavior that appears only in test (train count 0).
+    """
+    _require_columns(train, behavior_column)
+    _require_columns(test, behavior_column)
+    tr = train[behavior_column].astype(str)
+    te = test[behavior_column].astype(str)
+    counts = tr.value_counts()
+    train_classes = set(tr.unique())
+    low_train = set(counts[counts < min_train_samples].index.astype(str))
+    only_in_test = set(te.unique()) - train_classes
+    to_drop = low_train | only_in_test
+    if not to_drop:
+        return train, test, {
+            "behavior_column": behavior_column,
+            "min_train_samples": min_train_samples,
+            "behaviors_removed": [],
+            "train_rows_removed": 0,
+            "test_rows_removed": 0,
+        }
+
+    removed_train = int(tr.isin(to_drop).sum())
+    removed_test = int(te.isin(to_drop).sum())
+    train_out = train.loc[~tr.isin(to_drop)].reset_index(drop=True)
+    test_out = test.loc[~te.isin(to_drop)].reset_index(drop=True)
+    meta = {
+        "behavior_column": behavior_column,
+        "min_train_samples": min_train_samples,
+        "behaviors_removed": sorted(to_drop, key=str),
+        "train_rows_removed": removed_train,
+        "test_rows_removed": removed_test,
+        "train_sample_count_per_removed_behavior": {
+            b: int(tr.eq(b).sum()) for b in sorted(to_drop, key=str)
+        },
+    }
+    print(
+        f"[dataset_processing] Comportamentos excluídos (<{min_train_samples} amostras no treino "
+        f"ou só no teste): {meta['behaviors_removed']!r} "
+        f"(−{removed_train} treino, −{removed_test} teste)"
+    )
+    if train_out.empty:
+        raise SystemExit(
+            "Conjunto de treino ficou vazio após --min-train-samples-per-behavior. "
+            "Reduza o limiar ou verifique os dados."
+        )
+    if test_out.empty:
+        raise SystemExit(
+            "Conjunto de teste ficou vazio após filtrar comportamentos raros no treino. "
+            "Reduza --min-train-samples-per-behavior ou verifique o split."
+        )
+    return train_out, test_out, meta
 
 
 def split_subject_list(
@@ -242,6 +307,12 @@ def main() -> None:
     p.add_argument("--max-combinations", type=int, default=2_000_000)
     p.add_argument("--behavior-column", default=DEFAULT_BEHAVIOR_COLUMN)
     p.add_argument("--test-fraction", type=float, default=DEFAULT_TEST_FRACTION)
+    p.add_argument(
+        "--min-train-samples-per-behavior",
+        type=int,
+        default=DEFAULT_MIN_TRAIN_SAMPLES_PER_BEHAVIOR,
+        help="Remove behaviors with fewer than this many train rows from both train and test (default: 500).",
+    )
     args = p.parse_args()
 
     if not args.csv.is_file():
@@ -273,6 +344,13 @@ def main() -> None:
             f"| behavior={args.behavior_column!r} | test_fraction={args.test_fraction:.2f}"
         )
 
+    train, test, insufficient_train_meta = filter_behaviors_below_min_train_count(
+        train,
+        test,
+        behavior_column=args.behavior_column,
+        min_train_samples=args.min_train_samples_per_behavior,
+    )
+
     train, test, test_label_alignment = filter_test_behaviors_to_train(
         train, test, behavior_column=args.behavior_column
     )
@@ -297,6 +375,7 @@ def main() -> None:
         method=method,
         test_label_alignment=test_label_alignment,
     )
+    report["insufficient_train_behavior_filter"] = insufficient_train_meta
     path_report = out / "split_report.json"
     path_report.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     print(f"Relatório: {path_report.resolve()}\nPasta: {out.resolve()}\nTreino: {path_train.resolve()}\nTeste: {path_test.resolve()}")
