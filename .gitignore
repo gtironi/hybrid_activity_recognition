@@ -12,3 +12,9 @@ dataset/*.csv
 dataset/*.parquet
 
 experiments/*/
+ablations/*
+ablations/patchtst/*
+ablations/patchtst/
+
+data/
+dataset/
