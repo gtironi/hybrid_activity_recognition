@@ -4,6 +4,8 @@ CSV → train/test Parquet + split_report.json.
 
 - --split-by behavior: sujeitos disjuntos; teste escolhido com genSplit (ver scripts/genSplit.py).
 - --split-by subject: sujeitos de teste fixos (--test-subjects).
+- Mapeamento CSV bruto → etiquetas canónicas em BEHAVIOUR_LABEL_MAP (antes do split); genSplit e o
+  filtro mínimo no treino usam já estas classes agregadas, não os rótulos brutos.
 - Após o split, remove comportamentos com menos de --min-train-samples-per-behavior amostras
   no treino (e qualquer comportamento que só exista no teste) de **treino e teste** para alinhar
   labels com o que o modelo pode aprender.
@@ -30,6 +32,51 @@ DEFAULT_TEST_SUBJECTS = (1329, 1343, 1353, 1357, 1372)
 DEFAULT_TEST_FRACTION = 0.2
 DEFAULT_BEHAVIOR_COLUMN = "behaviour"
 DEFAULT_MIN_TRAIN_SAMPLES_PER_BEHAVIOR = 500
+DEFAULT_UNKNOWN_CANONICAL_LABEL = "Other"
+
+# Raw (CSV) behaviour strings → canonical class names. Used before train/test split.
+BEHAVIOUR_LABEL_MAP: dict[str, list[str]] = {
+    "Standing": ["standing"],
+    "Lying": ["lying", "lying-down"],
+    "Drinking": ["drinking", "drinking_milk", "drinking_electrolytes", "drinking|water"],
+    "Eating": ["eating", "eating_concentrates", "eating_bedding", "eating_forage"],
+    "Walking": ["walking", "backward"],
+    "Run": ["running"],
+    "Grooming": ["grooming", "grooming_lying", "grooming|None"],
+    "Social Interaction": [
+        "social",
+        "social_sniff",
+        "social_sniff_lying",
+        "social_groom",
+        "social_groom_lying",
+        "social_nudge",
+        "social_nudge_lying",
+    ],
+    "Play": ["play", "play_object", "headbutt", "jump", "mount"],
+    "Rising": ["rising"],
+    "Rumination": ["rumination", "rumination_lying"],
+    "Defecation": ["defecation"],
+    "Urination": ["urination"],
+    "Oral manipulation of pen": ["oral_manipulation_of_pen"],
+    "Sniff": ["sniff", "sniff_walking", "sniff_lying"],
+    "Abnormal": [
+        "abnormal",
+        "cross-suckle_udder",
+        "cross-suckle_other",
+        "tongue_rolling",
+        "tongue_rolling_lying",
+    ],
+    "SRS": ["SRS", "scratch", "rub", "stretch"],
+    "Cough": ["cough"],
+    "Fall": ["fall"],
+    "Vocalization": ["vocalization"],
+}
+
+_RAW_TO_CANONICAL: dict[str, str] = {
+    str(raw).lower().strip(): canonical
+    for canonical, raw_list in BEHAVIOUR_LABEL_MAP.items()
+    for raw in raw_list
+}
 
 
 def _coerce_subject_values(series: pd.Series, raw: list[str]) -> set:
@@ -59,6 +106,40 @@ def _label_distribution(series: pd.Series) -> dict:
     counts = {str(k): int(v) for k, v in vc.items()}
     prop = {k: (counts[k] / total if total else 0.0) for k in counts}
     return {"counts": counts, "proportions": prop}
+
+
+def apply_canonical_behavior_labels(
+    df: pd.DataFrame,
+    behavior_column: str,
+    *,
+    unknown_label: str = DEFAULT_UNKNOWN_CANONICAL_LABEL,
+) -> dict:
+    """
+    In-place: replace ``behavior_column`` with canonical names from BEHAVIOUR_LABEL_MAP.
+    Normalizes lookup with str(...).lower().strip(); unknown raw values → ``unknown_label``.
+    """
+    _require_columns(df, behavior_column)
+    raw = df[behavior_column].astype(str)
+    norm = raw.str.lower().str.strip()
+    mapped = norm.map(_RAW_TO_CANONICAL).fillna(unknown_label)
+    df[behavior_column] = mapped
+    unmapped_mask = ~norm.isin(_RAW_TO_CANONICAL.keys())
+    unmapped_counts: dict[str, int] = {}
+    if unmapped_mask.any():
+        vc = raw[unmapped_mask].value_counts()
+        unmapped_counts = {str(k): int(v) for k, v in vc.items()}
+    n_unmapped_rows = int(unmapped_mask.sum())
+    if n_unmapped_rows:
+        print(
+            f"[dataset_processing] {n_unmapped_rows:,} linhas com {behavior_column!r} fora do mapa "
+            f"→ {unknown_label!r} ({len(unmapped_counts)} rótulos brutos distintos)."
+        )
+    return {
+        "unknown_label": unknown_label,
+        "canonical_classes": sorted(BEHAVIOUR_LABEL_MAP.keys(), key=str),
+        "n_rows_unmapped_raw": n_unmapped_rows,
+        "unmapped_raw_value_counts": unmapped_counts,
+    }
 
 
 def filter_test_behaviors_to_train(
@@ -324,6 +405,9 @@ def main() -> None:
 
     print(f"Lendo {args.csv} ...")
     df = pd.read_csv(args.csv)
+    _require_columns(df, args.behavior_column)
+    label_mapping_meta = apply_canonical_behavior_labels(df, args.behavior_column)
+    _require_columns(df, args.subject_column)
 
     if args.split_by == "subject":
         train, test, method = split_subject_list(
@@ -376,6 +460,7 @@ def main() -> None:
         test_label_alignment=test_label_alignment,
     )
     report["insufficient_train_behavior_filter"] = insufficient_train_meta
+    report["behavior_label_mapping"] = label_mapping_meta
     path_report = out / "split_report.json"
     path_report.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
     print(f"Relatório: {path_report.resolve()}\nPasta: {out.resolve()}\nTreino: {path_train.resolve()}\nTeste: {path_test.resolve()}")

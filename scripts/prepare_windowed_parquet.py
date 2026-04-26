@@ -2,6 +2,7 @@
 """
 Parquet bruto (série longa) → Parquet janelado + TSFEL, alinhado ao legado window_creator_labeled.
 
+Espera-se que ``--label-column`` já contenha etiquetas canónicas (mapeamento em scripts/dataset_processing.py).
 Modo discover (sem --feature-manifest-in): amostra + RF escolhe top-N colunas TSFEL; grava manifest JSON.
 Modo apply (--feature-manifest-in): só extrai as colunas do manifest (para teste sem vazamento).
 Skewness/Kurtosis (domínios statistical e spectral) não entram na extração TSFEL.
@@ -45,55 +46,6 @@ warnings.filterwarnings(
 )
 
 
-LABEL_MAP = {
-    "Standing": ["standing"],
-    "Lying": ["lying", "lying-down"],
-    "Drinking": ["drinking", "drinking_milk", "drinking_electrolytes", "drinking|water"],
-    "Eating": ["eating", "eating_concentrates", "eating_bedding", "eating_forage"],
-    "Walking": ["walking", "backward"],
-    "Run": ["running"],
-    "Grooming": ["grooming", "grooming_lying", "grooming|None"],
-    "Social Interaction": [
-        "social",
-        "social_sniff",
-        "social_sniff_lying",
-        "social_groom",
-        "social_groom_lying",
-        "social_nudge",
-        "social_nudge_lying",
-    ],
-    "Play": ["play", "play_object", "headbutt", "jump", "mount"],
-    "Rising": ["rising"],
-    "Rumination": ["rumination", "rumination_lying"],
-    "Defecation": ["defecation"],
-    "Urination": ["urination"],
-    "Oral manipulation of pen": ["oral_manipulation_of_pen"],
-    "Sniff": ["sniff", "sniff_walking", "sniff_lying"],
-    "Abnormal": [
-        "abnormal",
-        "cross-suckle_udder",
-        "cross-suckle_other",
-        "tongue_rolling",
-        "tongue_rolling_lying",
-    ],
-    "SRS": ["SRS", "scratch", "rub", "stretch"],
-    "Cough": ["cough"],
-    "Fall": ["fall"],
-    "Vocalization": ["vocalization", "vocalisation"],
-}
-
-RAW_TO_CANONICAL = {
-    raw_label.lower().strip(): target_label
-    for target_label, raw_labels in LABEL_MAP.items()
-    for raw_label in raw_labels
-}
-
-
-def map_behavior(label: str) -> str:
-    normalized = str(label).lower().strip()
-    return RAW_TO_CANONICAL.get(normalized, "Other")
-
-
 def tsfel_feature_config() -> dict:
     """TSFEL domain config without skew/kurtosis (statistical and spectral)."""
     cfg = tsfel.get_features_by_domain()
@@ -125,9 +77,8 @@ def create_windowed_dataframe(
     stride = int(window_size * (1 - overlap))
     cols = [*group_by, time_column, acc_x, acc_y, acc_z, label_column]
     df = pd.read_parquet(input_path, columns=cols)
-    df = df.rename(columns={label_column: "_raw_label"})
-    df["label"] = df["_raw_label"].map(map_behavior)
-    df.drop(columns=["_raw_label"], inplace=True)
+    df = df.rename(columns={label_column: "label"})
+    df["label"] = df["label"].astype(str)
 
     acc_cols = [acc_x, acc_y, acc_z]
     window_list = []
