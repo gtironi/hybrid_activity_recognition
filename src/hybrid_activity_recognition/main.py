@@ -1,5 +1,5 @@
 """
-Entry point for supervised, pretrain, fine-tune, FixMatch, and test experiments.
+Entry point for supervised, pretrain, fine-tune, and test experiments.
 
 Usage from repository root:
   PYTHONPATH=src python -m hybrid_activity_recognition.main --help
@@ -14,11 +14,7 @@ from pathlib import Path
 
 import torch
 
-from hybrid_activity_recognition.data.dataloader import (
-    prepare_supervised_dataloaders,
-    prepare_train_val_test_loaders,
-    prepare_unlabeled_dataloader,
-)
+from hybrid_activity_recognition.data.dataloader import prepare_train_val_test_loaders
 from hybrid_activity_recognition.models.modular import build_hybrid_model
 from hybrid_activity_recognition.training.metrics import classification_metrics_numpy
 from hybrid_activity_recognition.training.trainer import Trainer
@@ -39,7 +35,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Hybrid Activity Recognition — experiments CLI")
 
     # --- Mode & model ---
-    p.add_argument("--mode", choices=("supervised", "pretrain", "finetune", "fixmatch", "test"), required=True)
+    p.add_argument("--mode", choices=("supervised", "pretrain", "finetune", "test"), required=True)
     p.add_argument(
         "--model",
         type=str,
@@ -64,7 +60,6 @@ def parse_args():
     p.add_argument("--labeled_parquet_test", type=str, default="", help="Windowed parquet for testing.")
     p.add_argument("--labeled_parquet_val", type=str, default="", help="Optional validation parquet.")
     p.add_argument("--val_fraction", type=float, default=0.05, help="Stratified val fraction from train.")
-    p.add_argument("--unlabeled_parquet", type=str, default="", help="Required for fixmatch mode.")
     p.add_argument("--pretrain_parquet", type=str, default="", help="Windowed parquet for PatchTST pretraining.")
 
     # --- Checkpoints ---
@@ -94,11 +89,6 @@ def parse_args():
     p.add_argument("--pretrain_epochs", type=int, default=100)
     p.add_argument("--pretrain_lr", type=float, default=1e-3)
     p.add_argument("--pretrain_mask_ratio", type=float, default=0.4)
-
-    # --- FixMatch-specific ---
-    p.add_argument("--fixmatch_threshold", type=float, default=0.9)
-    p.add_argument("--fixmatch_lambda", type=float, default=1.0)
-    p.add_argument("--unlabeled_batch_mult", type=int, default=7)
 
     return p.parse_args()
 
@@ -205,7 +195,7 @@ def main():
         logger.info("test accuracy=%.4f macro_f1=%.4f", metrics["accuracy"], metrics["f1_macro"])
         return
 
-    # ---- Supervised / Finetune / FixMatch ----
+    # ---- Supervised / Finetune ----
     train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = _prepare_labeled_loaders(args)
     logger.info("classes=%d n_tsfel_feats=%d", len(class_names), n_feats)
 
@@ -244,32 +234,6 @@ def main():
         ) is None:
             raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
         res = trainer.evaluate(test_dl, out / "finetuned_best.pt")
-        m = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
-        return
-
-    if args.mode == "fixmatch":
-        if not args.unlabeled_parquet:
-            raise SystemExit("fixmatch requires --unlabeled_parquet")
-        ul = prepare_unlabeled_dataloader(
-            args.unlabeled_parquet,
-            batch_size=args.batch_size,
-            num_workers=args.num_workers,
-            unlabeled_batch_multiplier=args.unlabeled_batch_mult,
-        )
-        warm = args.checkpoint or (out / "finetuned_best.pt")
-        lr = args.lr if args.lr is not None else 2e-3
-        trainer.train_fixmatch(
-            train_dl,
-            ul,
-            val_dl,
-            finetune_checkpoint=warm,
-            epochs=args.epochs,
-            lr=lr,
-            threshold=args.fixmatch_threshold,
-            lambda_u=args.fixmatch_lambda,
-        )
-        res = trainer.evaluate(test_dl, out / "fixmatch_best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
         logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
         return

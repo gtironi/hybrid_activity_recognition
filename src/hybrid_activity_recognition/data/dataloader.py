@@ -26,18 +26,6 @@ class CalfHybridDataset(Dataset):
         return self.signals[idx], self.features[idx], self.labels[idx]
 
 
-class UnlabeledDataset(Dataset):
-    def __init__(self, signals: np.ndarray, features: np.ndarray):
-        self.signals = torch.as_tensor(signals, dtype=torch.float32)
-        self.features = torch.as_tensor(features, dtype=torch.float32)
-
-    def __len__(self):
-        return len(self.signals)
-
-    def __getitem__(self, idx):
-        return self.signals[idx], self.features[idx]
-
-
 def _feature_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c not in _STANDARD_COLS]
 
@@ -262,38 +250,3 @@ def prepare_supervised_dataloaders(
     )
 
     return train_dl, val_dl, test_dl, class_names, num_classes, n_feats, le
-
-
-def prepare_unlabeled_dataloader(
-    unlabeled_parquet_path: str,
-    batch_size: int = 128,
-    num_workers: int = 2,
-    unlabeled_batch_multiplier: int = 7,
-) -> DataLoader:
-    """
-    Replica o notebook: normaliza sinal com mean/std globais do array não rotulado;
-    StandardScaler ajustado em todas as linhas não rotuladas.
-    """
-    df_u = pd.read_parquet(unlabeled_parquet_path)
-    feat_cols = _feature_columns(df_u)
-    signals_u = _stack_signals(df_u)
-    features_u = df_u[feat_cols].values.astype(np.float32)
-    features_u = np.nan_to_num(features_u, nan=0.0)
-
-    mean_sig = np.mean(signals_u, axis=(0, 2), keepdims=True)
-    std_sig = np.std(signals_u, axis=(0, 2), keepdims=True)
-    signals_norm = (signals_u - mean_sig) / (std_sig + 1e-6)
-
-    scaler = StandardScaler()
-    features_norm = scaler.fit_transform(features_u)
-
-    pin_memory = torch.cuda.is_available()
-    ds = UnlabeledDataset(signals_norm, features_norm)
-    return DataLoader(
-        ds,
-        batch_size=batch_size * max(1, unlabeled_batch_multiplier),
-        shuffle=True,
-        num_workers=num_workers,
-        drop_last=True,
-        pin_memory=pin_memory,
-    )

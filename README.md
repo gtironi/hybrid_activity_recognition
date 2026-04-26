@@ -205,7 +205,7 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main --help
 
 | Argument | Values | Description |
 |----------|--------|-------------|
-| `--mode` | `supervised`, `pretrain`, `finetune`, `fixmatch`, `test` | Training mode |
+| `--mode` | `supervised`, `pretrain`, `finetune`, `test` | Training mode |
 | `--model` | `cnn_lstm`, `robust`, `patchtst`, `tsfel_mlp` | Encoder family |
 | `--input_mode` | `deep_only`, `hybrid`, `tsfel_only` | Architecture mode (default: `hybrid`) |
 | `--labeled_parquet_train` | path | Windowed training parquet |

@@ -10,20 +10,13 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from hybrid_activity_recognition.training.augment import SensorFixMatchAugment
 from hybrid_activity_recognition.training.loss import balanced_class_weights, supervised_loss_fn
 
 logger = logging.getLogger(__name__)
 
 
-def _cycle(iterable):
-    while True:
-        for x in iterable:
-            yield x
-
-
 class Trainer:
-    """Loops de treino supervisionado, fine-tune e FixMatch; avaliacao no val/test."""
+    """Supervised training, fine-tuning, and val/test evaluation loops."""
 
     def __init__(self, model: nn.Module, device: torch.device, output_dir: str | Path):
         self.model = model
@@ -207,96 +200,6 @@ class Trainer:
                 epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
             )
             scheduler.step(avg_val_loss)
-            if val_acc > best_acc:
-                best_acc = val_acc
-                torch.save(self.model.state_dict(), ckpt_path)
-
-        return self.model
-
-    def train_fixmatch(
-        self,
-        labeled_dl: DataLoader,
-        unlabeled_dl: DataLoader,
-        val_dl: DataLoader,
-        finetune_checkpoint: str | Path | None,
-        epochs: int = 20,
-        lr: float = 2e-3,
-        weight_decay: float = 1e-4,
-        threshold: float = 0.9,
-        lambda_u: float = 1.0,
-        grad_clip: float = 1.0,
-        checkpoint_name: str = "fixmatch_best.pt",
-    ) -> nn.Module:
-        if finetune_checkpoint and Path(finetune_checkpoint).is_file():
-            self.model.load_state_dict(torch.load(finetune_checkpoint, map_location=self.device, weights_only=True))
-
-        optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-        augmenter = SensorFixMatchAugment(self.device)
-        unlabeled_iter = _cycle(unlabeled_dl)
-        best_acc = 0.0
-        ckpt_path = self.output_dir / checkpoint_name
-
-        for epoch in range(epochs):
-            self.model.train()
-            totals = {"loss": 0.0, "s": 0.0, "u": 0.0, "mask": 0.0, "steps": 0}
-
-            for x_s_lab, x_f_lab, y_lab in labeled_dl:
-                x_s_lab = x_s_lab.to(self.device)
-                x_f_lab = x_f_lab.to(self.device)
-                y_lab = y_lab.to(self.device)
-
-                x_s_u, x_f_u = next(unlabeled_iter)
-                x_s_u = x_s_u.to(self.device)
-                x_f_u = x_f_u.to(self.device)
-                bs = x_s_lab.size(0)
-                x_s_u, x_f_u = x_s_u[:bs], x_f_u[:bs]
-
-                x_s_aug, x_f_aug = augmenter.weak_aug(x_s_lab, x_f_lab)
-                logits_lab = self.model(x_s_aug, x_f_aug)
-                loss_s = torch.nn.functional.cross_entropy(logits_lab, y_lab)
-
-                with torch.no_grad():
-                    w_s, w_f = augmenter.weak_aug(x_s_u, x_f_u)
-                    logits_weak = self.model(w_s, w_f)
-                    probs_weak = torch.softmax(logits_weak, dim=1)
-                    max_probs, pseudo = torch.max(probs_weak, dim=1)
-                    mask = max_probs.ge(threshold).float()
-                    totals["mask"] += mask.mean().item()
-
-                st_s, st_f = augmenter.strong_aug(x_s_u, x_f_u)
-                logits_strong = self.model(st_s, st_f)
-                loss_u_elem = torch.nn.functional.cross_entropy(
-                    logits_strong, pseudo, reduction="none"
-                )
-                loss_u = (loss_u_elem * mask).mean()
-                loss = loss_s + lambda_u * loss_u
-
-                optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                if grad_clip:
-                    torch.nn.utils.clip_grad_norm_(self.model.parameters(), grad_clip)
-                optimizer.step()
-
-                totals["loss"] += loss.item()
-                totals["s"] += loss_s.item()
-                totals["u"] += loss_u.item()
-                totals["steps"] += 1
-
-            self.model.eval()
-            v_ok = v_n = 0
-            with torch.no_grad():
-                for x_s, x_f, y in val_dl:
-                    x_s, x_f, y = x_s.to(self.device), x_f.to(self.device), y.to(self.device)
-                    pred = self.model(x_s, x_f).argmax(1)
-                    v_ok += (pred == y).sum().item()
-                    v_n += y.size(0)
-            val_acc = 100.0 * v_ok / max(1, v_n)
-            steps = max(1, totals["steps"])
-            logger.info(
-                "FixMatch Ep %03d/%d | loss=%.4f (sup=%.4f unsup=%.4f) | mask~%.2f%% | val_acc=%.2f%%",
-                epoch + 1, epochs, totals["loss"] / steps, totals["s"] / steps,
-                totals["u"] / steps, 100.0 * totals["mask"] / steps, val_acc,
-            )
             if val_acc > best_acc:
                 best_acc = val_acc
                 torch.save(self.model.state_dict(), ckpt_path)
