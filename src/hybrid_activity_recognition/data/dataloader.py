@@ -59,9 +59,11 @@ def prepare_train_val_test_loaders(
     """
     Treino e teste em Parquets distintos (ex.: por sujeito). Ajusta média/desvio do sinal e
     StandardScaler das features TSFEL apenas nas janelas de treino (após split val).
-    LabelEncoder fit só no treino; linhas de teste com label desconhecido são removidas (aviso).
+    LabelEncoder fit só no treino. Labels treino/teste devem estar alinhados em
+    scripts/dataset_processing.py; labels desconhecidos em teste/val geram erro explícito.
     """
     df_train = pd.read_parquet(parquet_train_path)
+    df_train["label"] = df_train["label"].astype(str)
     if drop_rare_classes_min_count > 0:
         counts = df_train["label"].value_counts()
         rare = counts[counts < drop_rare_classes_min_count].index
@@ -69,12 +71,14 @@ def prepare_train_val_test_loaders(
             df_train = df_train[~df_train["label"].isin(rare)].reset_index(drop=True)
 
     df_test = pd.read_parquet(parquet_test_path)
+    df_test["label"] = df_test["label"].astype(str)
     feat_cols = _feature_columns(df_train)
     df_train = _align_tsfel_columns(df_train, feat_cols)
     df_test = _align_tsfel_columns(df_test, feat_cols)
 
     if parquet_val_path:
         df_val = pd.read_parquet(parquet_val_path)
+        df_val["label"] = df_val["label"].astype(str)
         df_val = _align_tsfel_columns(df_val, feat_cols)
         df_tr = df_train.reset_index(drop=True)
     else:
@@ -93,23 +97,25 @@ def prepare_train_val_test_loaders(
 
     le = LabelEncoder()
     le.fit(df_tr["label"])
-
     known = set(le.classes_)
-    n_test_before = len(df_test)
-    df_test = df_test[df_test["label"].isin(known)].reset_index(drop=True)
-    dropped = n_test_before - len(df_test)
-    if dropped:
-        print(
-            f"[dataloader] Teste: removidas {dropped} janelas com label fora do treino "
-            f"(classes do encoder: {len(le.classes_)})."
-        )
 
-    n_val_before = len(df_val)
-    df_val = df_val[df_val["label"].isin(known)].reset_index(drop=True)
-    if n_val_before - len(df_val):
-        print(
-            f"[dataloader] Validação: removidas {n_val_before - len(df_val)} janelas com label desconhecido."
+    unk_te = set(df_test["label"].unique()) - known
+    if unk_te:
+        raise ValueError(
+            "Test parquet contains labels not in the training split after rare-class filtering: "
+            f"{sorted(unk_te)!r}. Regenerate parquets with scripts/dataset_processing.py or align labels."
         )
+    if df_test.empty:
+        raise ValueError("Conjunto de teste está vazio.")
+
+    unk_val = set(df_val["label"].unique()) - known
+    if unk_val:
+        raise ValueError(
+            "Validation set contains labels not in the training split: "
+            f"{sorted(unk_val)!r}. Check parquet_val or val_fraction split."
+        )
+    if df_val.empty:
+        raise ValueError("Conjunto de validacao está vazio.")
 
     signals_tr = _stack_signals(df_tr)
     signals_val = _stack_signals(df_val)

@@ -4,6 +4,8 @@ CSV → train/test Parquet + split_report.json.
 
 - --split-by behavior: sujeitos disjuntos; teste escolhido com genSplit (ver scripts/genSplit.py).
 - --split-by subject: sujeitos de teste fixos (--test-subjects).
+- Após o split, remove do teste linhas cujo --behavior-column não aparece no treino; o relatório
+  JSON inclui quantas linhas e quais comportamentos foram removidos.
 
 Saída: {out_dir}/{csv_stem}/train.parquet, test.parquet, split_report.json
 """
@@ -53,6 +55,48 @@ def _label_distribution(series: pd.Series) -> dict:
     counts = {str(k): int(v) for k, v in vc.items()}
     prop = {k: (counts[k] / total if total else 0.0) for k in counts}
     return {"counts": counts, "proportions": prop}
+
+
+def filter_test_behaviors_to_train(
+    train: pd.DataFrame,
+    test: pd.DataFrame,
+    *,
+    behavior_column: str,
+) -> tuple[pd.DataFrame, pd.DataFrame, dict]:
+    """
+    Mantém no teste apenas linhas cujo comportamento (como string) existe no treino.
+    Retorna metadados sobre linhas removidas para o split_report.json.
+    """
+    _require_columns(train, behavior_column)
+    _require_columns(test, behavior_column)
+    known = set(train[behavior_column].astype(str).unique())
+    beh_test = test[behavior_column].astype(str)
+    in_train = beh_test.isin(known)
+    removed = test.loc[~in_train]
+    n_removed = int(len(removed))
+    removed_counts: dict[str, int] = {}
+    if n_removed:
+        vc = removed[behavior_column].astype(str).value_counts()
+        removed_counts = {str(k): int(v) for k, v in vc.items()}
+    behaviors_test_not_train = sorted(set(beh_test.unique()) - known, key=str)
+    test_out = test.loc[in_train].reset_index(drop=True)
+    meta = {
+        "behavior_column": behavior_column,
+        "rows_removed": n_removed,
+        "removed_row_counts_by_behavior": removed_counts,
+        "behaviors_present_in_test_but_not_in_train": behaviors_test_not_train,
+    }
+    if n_removed:
+        print(
+            f"[dataset_processing] Teste: removidas {n_removed} linhas com "
+            f"{behavior_column!r} fora do treino ({len(known)} comportamentos no treino)."
+        )
+    if test_out.empty:
+        raise SystemExit(
+            "Conjunto de teste ficou vazio após alinhar comportamentos ao treino. "
+            "Verifique --behavior-column e a distribuição por sujeito."
+        )
+    return train, test_out, meta
 
 
 def split_subject_list(
@@ -144,6 +188,7 @@ def build_split_report(
     subject_column: str,
     behavior_column: str,
     method: dict,
+    test_label_alignment: dict | None = None,
 ) -> dict:
     _require_columns(train, subject_column)
     _require_columns(test, subject_column)
@@ -152,7 +197,7 @@ def build_split_report(
         return sorted(frame[subject_column].dropna().unique().tolist(), key=str)
 
     report: dict = {
-        "schema_version": 1,
+        "schema_version": 2,
         "samples": {"total": len(df_full), "train": len(train), "test": len(test)},
         "subjects": {
             "column": subject_column,
@@ -163,6 +208,7 @@ def build_split_report(
         },
         "behavior_distribution": None,
         "method": method,
+        "test_label_alignment": test_label_alignment,
     }
 
     if behavior_column in train.columns and behavior_column in test.columns:
@@ -227,6 +273,10 @@ def main() -> None:
             f"| behavior={args.behavior_column!r} | test_fraction={args.test_fraction:.2f}"
         )
 
+    train, test, test_label_alignment = filter_test_behaviors_to_train(
+        train, test, behavior_column=args.behavior_column
+    )
+
     n = len(df)
     print(
         f"{summary}\n"
@@ -239,10 +289,13 @@ def main() -> None:
     test.to_parquet(path_test, engine="pyarrow", compression="snappy", index=False)
 
     report = build_split_report(
-        df, train, test,
+        df,
+        train,
+        test,
         subject_column=args.subject_column,
         behavior_column=args.behavior_column,
         method=method,
+        test_label_alignment=test_label_alignment,
     )
     path_report = out / "split_report.json"
     path_report.write_text(json.dumps(report, indent=2, default=str), encoding="utf-8")
