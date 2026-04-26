@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
-"""Minimal PatchTSTForClassification training loop (Hugging Face API)."""
+"""
+PatchTST classification (Hugging Face): optional in-run SSL pretrain, then supervised fine-tune.
+
+- Default: random init → supervised only.
+- ``--pretrain``: train ``PatchTSTForPretraining`` (masked) on unlabeled windows, save ``pretrain.pt``,
+  load encoder into the classifier, then supervised.
+- ``--pretrain_ckpt PATH``: skip SSL in this run; load encoder from checkpoint, then supervised.
+  If both ``--pretrain`` and ``--pretrain_ckpt`` are set, the checkpoint wins (SSL not re-trained).
+"""
 
 from __future__ import annotations
 
@@ -12,7 +20,7 @@ import numpy as np
 import torch
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 from torch.utils.data import DataLoader, TensorDataset
-from transformers import PatchTSTConfig, PatchTSTForClassification
+from transformers import PatchTSTConfig, PatchTSTForClassification, PatchTSTForPretraining
 
 from hugging.patchtst.io_standard import load_csv_tensors, load_meta, package_root
 
@@ -41,6 +49,89 @@ def _resolve_data_dir(preset: str | None, data_dir: Path | None) -> Path:
 def _batch_accuracy(logits: torch.Tensor, y: torch.Tensor) -> float:
     pred = logits.argmax(dim=-1)
     return (pred == y).float().mean().item()
+
+
+def _patchtst_config_for_run(
+    args: argparse.Namespace,
+    *,
+    n_ch: int,
+    t_ctx: int,
+    num_targets: int,
+) -> PatchTSTConfig:
+    """
+    Single backbone + head layout for both ``PatchTSTForPretraining`` and
+    ``PatchTSTForClassification`` (same pattern as one ``PatchTSTConfig`` in HF examples).
+    """
+    return PatchTSTConfig(
+        num_input_channels=n_ch,
+        num_targets=num_targets,
+        context_length=t_ctx,
+        patch_length=args.patch_length,
+        patch_stride=args.patch_stride,
+        d_model=args.d_model,
+        num_hidden_layers=args.num_hidden_layers,
+        num_attention_heads=args.num_attention_heads,
+        ffn_dim=args.ffn_dim,
+        use_cls_token=True,
+        head_dropout=0.3,
+        do_mask_input=True,
+        mask_type="random",
+        random_mask_ratio=args.mask_ratio,
+    )
+
+
+def _run_ssl_pretrain_and_save(
+    *,
+    args: argparse.Namespace,
+    config: PatchTSTConfig,
+    x_tr: np.ndarray,
+    x_va: np.ndarray,
+    out: Path,
+    to_past,
+) -> Path:
+    """Train ``PatchTSTForPretraining(config)``; write ``out/pretrain.pt``. Returns path."""
+    blocks: list[np.ndarray] = [x_tr]
+    if args.use_val_unlabeled and len(x_va) > 0:
+        blocks.append(x_va)
+    x_all = np.concatenate(blocks, axis=0)
+    if len(x_all) == 0:
+        raise RuntimeError("no windows for SSL pretrain")
+
+    pt_model = PatchTSTForPretraining(config).to(args.device)
+    ds = TensorDataset(torch.from_numpy(x_all).float())
+    loader = DataLoader(ds, batch_size=args.batch_size, shuffle=True, drop_last=False)
+    opt_pt = torch.optim.AdamW(pt_model.parameters(), lr=args.pretrain_lr)
+
+    global_step = 0
+    for epoch in range(args.pretrain_epochs):
+        pt_model.train()
+        losses: list[float] = []
+        for (xb,) in loader:
+            xb = xb.to(args.device)
+            past = to_past(xb)
+            opt_pt.zero_grad(set_to_none=True)
+            outputs = pt_model(past_values=past)
+            loss = outputs.loss
+            loss.backward()
+            opt_pt.step()
+            losses.append(loss.item())
+            global_step += 1
+            if global_step % args.log_every == 0:
+                print(
+                    f"[pretrain] epoch {epoch+1}/{args.pretrain_epochs} step {global_step} "
+                    f"loss {np.mean(losses[-args.log_every:]):.4f}"
+                )
+        print(f"[pretrain] epoch {epoch+1} loss {np.mean(losses):.4f}")
+
+    ckpt_path = out / "pretrain.pt"
+    torch.save(
+        {"model_state_dict": pt_model.state_dict(), "config": config.to_dict()},
+        ckpt_path,
+    )
+    del pt_model
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+    return ckpt_path
 
 
 def main() -> None:
@@ -76,7 +167,49 @@ def main() -> None:
         default=2000,
         help="Max test points for t-SNE (subsampled if larger)",
     )
+    parser.add_argument(
+        "--pretrain",
+        action="store_true",
+        help="Run masked SSL pretrain in this process, then load encoder and fine-tune supervised",
+    )
+    parser.add_argument(
+        "--pretrain_epochs",
+        type=int,
+        default=10,
+        help="SSL epochs when --pretrain (ignored if --pretrain_ckpt is set)",
+    )
+    parser.add_argument(
+        "--pretrain_lr",
+        type=float,
+        default=1e-3,
+        help="Learning rate for SSL phase",
+    )
+    parser.add_argument(
+        "--mask_ratio",
+        type=float,
+        default=0.4,
+        help="Random mask ratio for PatchTSTForPretraining",
+    )
+    parser.add_argument(
+        "--use_val_unlabeled",
+        action="store_true",
+        help="Include val split features (no labels) in SSL pretrain data",
+    )
+    parser.add_argument(
+        "--pretrain_ckpt",
+        type=Path,
+        default=None,
+        help="Load encoder from this pretrain.pt only (no SSL training in this run). Overrides --pretrain.",
+    )
+    parser.add_argument(
+        "--skip_pretrain_config_check",
+        action="store_true",
+        help="Do not verify pretrain vs classifier PatchTSTConfig encoder fields",
+    )
     args = parser.parse_args()
+
+    if args.pretrain and args.pretrain_ckpt:
+        print("Note: --pretrain_ckpt set; skipping in-run SSL (loading checkpoint only).")
 
     data_dir = _resolve_data_dir(args.preset, args.data_dir)
     meta = load_meta(data_dir)
@@ -115,22 +248,51 @@ def main() -> None:
     # ===============================
     # PatchTST for Classification
     # ===============================
-
-    config = PatchTSTConfig(
-        num_input_channels=n_ch,
-        num_targets=num_targets,
-        context_length=t_ctx,
-        patch_length=args.patch_length,
-        patch_stride=args.patch_stride,
-        d_model=args.d_model,
-        num_hidden_layers=args.num_hidden_layers,
-        num_attention_heads=args.num_attention_heads,
-        ffn_dim=args.ffn_dim,
-        use_cls_token=True,
-        head_dropout=0.3,
+    # One config for SSL backbone and classifier (HF-style); manual loops, no Trainer.
+    config = _patchtst_config_for_run(
+        args, n_ch=n_ch, t_ctx=t_ctx, num_targets=num_targets
     )
+
+    ssl_ckpt_used: Path | None = None
+    pretrain_load_source: str | None = None
+    if args.pretrain_ckpt:
+        ssl_ckpt_used = Path(args.pretrain_ckpt).resolve()
+        pretrain_load_source = "external_checkpoint"
+    elif args.pretrain:
+        ssl_ckpt_used = _run_ssl_pretrain_and_save(
+            args=args,
+            config=config,
+            x_tr=x_tr,
+            x_va=x_va,
+            out=out,
+            to_past=to_past,
+        )
+        pretrain_load_source = "trained_in_run"
+
     model = PatchTSTForClassification(config)
     model.to(args.device)
+
+    if ssl_ckpt_used is not None:
+        from hugging.patchtst.weights_util import load_pretrain_into_classifier
+
+        n_loaded, skipped = load_pretrain_into_classifier(
+            model,
+            ssl_ckpt_used,
+            check_config=not args.skip_pretrain_config_check,
+        )
+        payload: dict = {
+            "source": pretrain_load_source,
+            "checkpoint": str(ssl_ckpt_used),
+            "n_tensors_loaded": n_loaded,
+            "skipped_keys_sample": skipped[:40],
+            "skipped_total": len(skipped),
+        }
+        if pretrain_load_source == "trained_in_run":
+            payload["pretrain_epochs"] = args.pretrain_epochs
+        (out / "pretrain_load.json").write_text(
+            json.dumps(payload, indent=2),
+            encoding="utf-8",
+        )
 
     train_ds = TensorDataset(
         torch.from_numpy(x_tr),
@@ -161,6 +323,10 @@ def main() -> None:
         "meta_context_length": t_ctx,
         "meta_num_channels": n_ch,
         "num_targets": num_targets,
+        "pretrain": bool(args.pretrain),
+        "pretrain_epochs": args.pretrain_epochs if args.pretrain else None,
+        "pretrain_ckpt": str(args.pretrain_ckpt) if args.pretrain_ckpt else None,
+        "ssl_weights_from": str(ssl_ckpt_used) if ssl_ckpt_used else None,
     }
     (out / "config.json").write_text(json.dumps(run_cfg, indent=2), encoding="utf-8")
 
@@ -203,10 +369,14 @@ def main() -> None:
         and not args.no_tsne_before
         and len(y_te) > 0
     ):
+        if ssl_ckpt_used is not None:
+            before_title = f"After SSL pretrain, before supervised — {data_dir.name} / test"
+        else:
+            before_title = f"Before training (random init) — {data_dir.name} / test"
         try_tsne(
             out / "tsne_before.png",
             model,
-            plot_title=f"Before training (random init) — {data_dir.name} / test",
+            plot_title=before_title,
             err_name="tsne_before_error.txt",
         )
 

@@ -4,6 +4,7 @@
 #   bash hugging/patchtst/run_all.sh
 # Variáveis opcionais:
 #   EPOCHS=5 DEVICE=cuda DOG_WINDOW=128 DOG_STRIDE=64
+#   PRETRAIN=1 PRETRAIN_EPOCHS=10 — SSL mascarado + classificação em cada preset (train_classification_debug)
 #   SKIP_CONVERT=1   — só treina (CSV já gerados)
 #   SKIP_TRAIN=1       — só converte
 #   ACTBECALF_MAX_ROWS — ex.: 500000; vazio = arquivo inteiro (pode demorar / usar muita RAM)
@@ -21,6 +22,7 @@ BATCH_SIZE="${BATCH_SIZE:-64}"
 DEVICE="${DEVICE:-cuda}"
 DOG_WINDOW="${DOG_WINDOW:-128}"
 DOG_STRIDE="${DOG_STRIDE:-64}"
+PRETRAIN_EPOCHS="${PRETRAIN_EPOCHS:-10}"
 
 py() {
   python -m "$@"
@@ -53,13 +55,19 @@ fi
 
 if [[ -z "${SKIP_TRAIN:-}" ]]; then
   echo "=== Train: todos os presets ==="
+  TRAIN_EXTRA=()
+  if [[ -n "${PRETRAIN:-}" ]]; then
+    TRAIN_EXTRA+=(--pretrain --pretrain_epochs "${PRETRAIN_EPOCHS}")
+    echo "(PRETRAIN=1: ${PRETRAIN_EPOCHS} épocas SSL + ${EPOCHS} épocas supervisionadas por preset)"
+  fi
   for preset in har ettm1 actbecalf dog_w10 dog_w50 dog_w100 dog_raw; do
     echo "--- preset: ${preset} ---"
     py hugging.patchtst.train_classification_debug \
       --preset "${preset}" \
       --epochs "${EPOCHS}" \
       --batch_size "${BATCH_SIZE}" \
-      --device "${DEVICE}"
+      --device "${DEVICE}" \
+      "${TRAIN_EXTRA[@]}"
   done
   echo "Concluído. Runs em: ${REPO_ROOT}/hugging/patchtst/runs/"
 else

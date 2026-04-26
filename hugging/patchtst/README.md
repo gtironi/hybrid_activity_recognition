@@ -51,6 +51,29 @@ python -m hugging.patchtst.train_classification_debug --preset ettm1 --epochs 5
 
 Use `--data_dir /path/to/standardized/foo` instead of `--preset` for custom outputs.
 
+### SSL pretrain → supervised (same script)
+
+**In one run** (masked SSL on unlabeled windows, then supervised). Uses `train.csv` features only unless `--use_val_unlabeled`:
+
+```bash
+python -m hugging.patchtst.train_classification_debug \
+  --preset har --pretrain --pretrain_epochs 10 --epochs 5 --device cuda
+```
+
+Writes `pretrain.pt` and `pretrain_load.json` under the same run directory as `model.pt`.
+
+**Load an existing checkpoint** (no SSL training in this process):
+
+```bash
+python -m hugging.patchtst.train_classification_debug \
+  --preset har --epochs 5 \
+  --pretrain_ckpt path/to/pretrain.pt
+```
+
+If both `--pretrain` and `--pretrain_ckpt` are passed, only the checkpoint is loaded (SSL is skipped).
+
+Use the **same** architecture flags for a saved `pretrain.pt` as for classification (defaults match). Mismatches raise `ValueError` unless `--skip_pretrain_config_check`.
+
 **API notes** (Transformers 5.5.x): `PatchTSTConfig` uses `patch_stride` (not `stride`). The forward pass passes labels as `target_values=`.
 
 ## t-SNE (classification checkpoint)
