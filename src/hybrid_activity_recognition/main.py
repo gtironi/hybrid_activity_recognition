@@ -198,6 +198,7 @@ def main():
         head_name=args.head,
             **encoder_kwargs,
         ).to(device)
+        logger.info("model (%s/%s):\n%s", args.model, args.input_mode, model)
         ckpt = args.checkpoint or str(out / "best.pt")
         trainer = Trainer(model, device, out)
         res = trainer.evaluate(test_dl, ckpt)
@@ -219,6 +220,7 @@ def main():
         head_name=args.head,
         **encoder_kwargs,
     ).to(device)
+    logger.info("model (%s/%s):\n%s", args.model, args.input_mode, model)
     trainer = Trainer(model, device, out)
 
     if args.mode == "supervised":

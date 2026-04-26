@@ -179,7 +179,7 @@ class PatchTSTEncoder(SignalEncoder):
 
     def load_pretrained_encoder(self, path: str) -> None:
         """Load backbone weights from a PatchTSTForPretraining checkpoint."""
-        state = torch.load(path, map_location="cpu")
+        state = torch.load(path, map_location="cpu", weights_only=False)
         encoder_state = {
             k[len("model."):]: v
             for k, v in state.items()
