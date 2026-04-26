@@ -283,7 +283,7 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --input_mode hybrid \
   --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
   --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
-  --output_dir experiments/robust_hybrid_run1 \
+  --output_dir experiments/robust_run1 \
   --epochs 50 --lr 1e-3 --device cuda
 ```
 
@@ -316,10 +316,10 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --mode supervised \
   --model robust \
   --input_mode hybrid \
-  --checkpoint experiments/robust_hybrid_run1/checkpoint.pt \
+  --checkpoint experiments/robust_run1/checkpoint.pt \
   --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
   --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
-  --output_dir experiments/robust_hybrid_run1 \
+  --output_dir experiments/robust_run1 \
   --epochs 50 --device cuda
 ```
 
@@ -330,10 +330,10 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --mode test \
   --model robust \
   --input_mode hybrid \
-  --checkpoint experiments/robust_hybrid_run1/best.pt \
+  --checkpoint experiments/robust_run1/best.pt \
   --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
   --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
-  --output_dir experiments/robust_hybrid_run1
+  --output_dir experiments/robust_run1
 ```
 
 ---
@@ -445,7 +445,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 ### Adding a New Encoder
 
-1. Implement `SignalEncoder` in `src/hybrid_activity_recognition/models/modular/encoders.py`:
+1. Implement `SignalEncoder` in `src/hybrid_activity_recognition/models/encoders.py`:
    ```python
    class MyEncoder(SignalEncoder):
        @property
@@ -458,7 +458,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
            ...
    ```
 
-2. Register in `models/modular/__init__.py`:
+2. Register in `models/__init__.py`:
    ```python
    _ENCODER_REGISTRY["my_encoder"] = MyEncoder
    ```
