@@ -16,6 +16,7 @@ import torch
 
 from hybrid_activity_recognition.data.dataloader import prepare_train_val_test_loaders
 from hybrid_activity_recognition.models import build_hybrid_model
+from hybrid_activity_recognition.training.evaluation_report import save_test_evaluation_artifacts
 from hybrid_activity_recognition.training.metrics import classification_metrics_numpy
 from hybrid_activity_recognition.training.trainer import Trainer
 from hybrid_activity_recognition.utils.logging import setup_logging
@@ -222,8 +223,13 @@ def main():
         trainer = Trainer(model, device, out)
         res = trainer.evaluate(test_dl, ckpt)
         metrics = classification_metrics_numpy(res["y_true"], res["y_pred"])
+        paths = save_test_evaluation_artifacts(
+            res["y_true"], res["y_pred"], class_names, out, stem="test"
+        )
         logger.info("checkpoint=%s", ckpt)
         logger.info("test accuracy=%.4f macro_f1=%.4f", metrics["accuracy"], metrics["f1_macro"])
+        logger.info("saved confusion matrix: %s", paths["png_path"])
+        logger.info("saved per-class metrics: %s", paths["json_path"])
         return
 
     # ---- Supervised / Finetune ----
@@ -257,7 +263,12 @@ def main():
         )
         res = trainer.evaluate(test_dl, out / "best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
+        paths = save_test_evaluation_artifacts(
+            res["y_true"], res["y_pred"], class_names, out, stem="test"
+        )
         logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
+        logger.info("saved confusion matrix: %s", paths["png_path"])
+        logger.info("saved per-class metrics: %s", paths["json_path"])
         return
 
     if args.mode == "finetune":
@@ -274,7 +285,12 @@ def main():
             raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
         res = trainer.evaluate(test_dl, out / "finetuned_best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
+        paths = save_test_evaluation_artifacts(
+            res["y_true"], res["y_pred"], class_names, out, stem="test"
+        )
         logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
+        logger.info("saved confusion matrix: %s", paths["png_path"])
+        logger.info("saved per-class metrics: %s", paths["json_path"])
         return
 
 
