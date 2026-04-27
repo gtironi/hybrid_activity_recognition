@@ -249,7 +249,7 @@ def main() -> None:
     p.add_argument("--purity-threshold", type=float, default=0.9)
     p.add_argument("--fs", type=int, default=25)
     p.add_argument("--top-n", type=int, default=75)
-    p.add_argument("--sample-size", type=int, default=3000)
+    p.add_argument("--sample-size", type=int, default=15000)
     p.add_argument("--batch-size", type=int, default=5000)
     p.add_argument("--group-by", nargs="+", default=["calfId", "segId"])
     p.add_argument("--time-column", default="dateTime")
