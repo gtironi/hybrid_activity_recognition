@@ -48,7 +48,7 @@ class Trainer:
         use_class_weights: bool = True,
         scheduler_patience: int = 5,
         scheduler_factor: float = 0.3,
-        early_stopping_patience: int = 10,
+        early_stopping_patience: int = 25,
         grad_clip: float = 1.0,
         checkpoint_name: str = "best.pt",
         resume_from: str | Path | None = None,

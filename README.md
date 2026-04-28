@@ -488,8 +488,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 ### TSFEL Branch
 
-- **`MLPTsfelBranch`**: Linear → BatchNorm → ReLU → Dropout
-- Projects variable-length TSFEL features to fixed `hidden_dim` (default: encoder's `output_dim`)
+- **`MLPTsfelBranch`**: 3-layer MLP — `K → 256 → 128 → 64`, each block: Linear → BatchNorm → ReLU → Dropout(0.4), Kaiming init. Output dim always 64.
 
 ### Fusion
 
@@ -498,7 +497,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 ### Classification Head
 
-- **`MLPHead`**: Linear → ReLU → Dropout → Linear (default: 256 hidden)
+- **`MLPHead`**: Linear → ReLU → Dropout → Linear (default: 256 hidden), Kaiming init
 - **`LinearHead`**: Single linear layer (minimal parameters)
 
 ---

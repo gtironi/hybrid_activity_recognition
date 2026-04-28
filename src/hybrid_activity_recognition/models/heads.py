@@ -12,10 +12,7 @@ from hybrid_activity_recognition.models.base import ClassificationHead
 
 
 class MLPHead(ClassificationHead):
-    """Two-layer MLP: Linear -> ReLU -> Dropout -> Linear.
-
-    Migrated from ``layers.heads.MLPClassificationHead``.
-    """
+    """Two-layer MLP: Linear -> ReLU -> Dropout -> Linear, with Kaiming init."""
 
     def __init__(
         self,
@@ -31,6 +28,14 @@ class MLPHead(ClassificationHead):
             nn.Dropout(dropout),
             nn.Linear(hidden_dim, num_classes),
         )
+        self._init_weights()
+
+    def _init_weights(self) -> None:
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+                if m.bias is not None:
+                    nn.init.zeros_(m.bias)
 
     def forward(self, z: Tensor) -> Tensor:
         return self.net(z)

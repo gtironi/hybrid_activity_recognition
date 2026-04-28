@@ -26,6 +26,7 @@ export RUN_SUFFIX=fromscratch
 unset FREEZE_ENCODER || true
 for MODE in deep_only hybrid; do
     run_experiment "patchtst" "$MODE"
+    run_finetune   "patchtst" "$MODE"
 done
 
 export RUN_SUFFIX=fromscratch_hf
@@ -54,6 +55,7 @@ export RUN_SUFFIX=frompretrain
 unset FREEZE_ENCODER || true
 for MODE in deep_only hybrid; do
     run_experiment "patchtst" "$MODE" --patchtst_checkpoint "$PATCHTST_CHECKPOINT"
+    run_finetune   "patchtst" "$MODE"
 done
 
 echo ">>> PatchTST: HF classification head + MAE checkpoint"
