@@ -15,4 +15,6 @@ experiments/*/
 data/*
 dataset/*
 
+pretrain_ablations/runs/
 
+pretrain_ablations/processed/
