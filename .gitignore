@@ -1,4 +1,5 @@
 .venv/
+venv/
 __pycache__/
 *.pyc
 *.parquets
@@ -12,5 +13,5 @@ dataset/*.parquet
 
 experiments/*/
 ablations/patchtst/*
-data/
+data1/
 dataset/
