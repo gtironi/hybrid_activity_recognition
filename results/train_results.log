@@ -1,0 +1,40 @@
+2026-04-13 18:05:10 INFO __main__: device=cuda
+2026-04-13 18:05:52 INFO __main__: device=cuda
+2026-04-13 18:05:54 INFO __main__: classes=18 n_tsfel_feats=75
+2026-04-13 18:36:45 INFO __main__: device=cuda
+2026-04-13 18:36:46 INFO __main__: classes=18 n_tsfel_feats=75
+2026-04-13 18:45:04 INFO __main__: device=cuda
+2026-04-13 18:45:05 INFO __main__: classes=18 n_tsfel_feats=75
+2026-04-13 18:45:21 INFO hybrid_activity_recognition.training.trainer: Ep 001/30 | train_loss=1.9505 acc=25.93% | val_loss=1.5925 val_acc=37.80%
+2026-04-13 18:45:31 INFO hybrid_activity_recognition.training.trainer: Ep 002/30 | train_loss=1.5412 acc=34.18% | val_loss=1.3582 val_acc=40.45%
+2026-04-13 18:45:41 INFO hybrid_activity_recognition.training.trainer: Ep 003/30 | train_loss=1.4200 acc=34.35% | val_loss=1.3898 val_acc=41.73%
+2026-04-13 18:45:50 INFO hybrid_activity_recognition.training.trainer: Ep 004/30 | train_loss=1.3354 acc=37.33% | val_loss=1.3036 val_acc=40.58%
+2026-04-13 18:46:01 INFO hybrid_activity_recognition.training.trainer: Ep 005/30 | train_loss=1.2939 acc=39.09% | val_loss=1.2706 val_acc=37.44%
+2026-04-13 18:46:10 INFO hybrid_activity_recognition.training.trainer: Ep 006/30 | train_loss=1.2499 acc=40.03% | val_loss=1.2437 val_acc=43.59%
+2026-04-13 18:46:20 INFO hybrid_activity_recognition.training.trainer: Ep 007/30 | train_loss=1.2241 acc=39.66% | val_loss=1.1818 val_acc=40.15%
+2026-04-13 18:46:30 INFO hybrid_activity_recognition.training.trainer: Ep 008/30 | train_loss=1.1500 acc=41.31% | val_loss=1.1630 val_acc=47.26%
+2026-04-13 18:46:39 INFO hybrid_activity_recognition.training.trainer: Ep 009/30 | train_loss=1.1368 acc=40.72% | val_loss=1.2855 val_acc=43.62%
+2026-04-13 18:46:49 INFO hybrid_activity_recognition.training.trainer: Ep 010/30 | train_loss=1.1020 acc=41.90% | val_loss=1.2031 val_acc=46.73%
+2026-04-13 18:46:59 INFO hybrid_activity_recognition.training.trainer: Ep 011/30 | train_loss=1.0608 acc=42.58% | val_loss=1.0933 val_acc=43.56%
+2026-04-13 18:47:08 INFO hybrid_activity_recognition.training.trainer: Ep 012/30 | train_loss=1.0277 acc=41.75% | val_loss=1.1980 val_acc=42.54%
+2026-04-13 18:47:18 INFO hybrid_activity_recognition.training.trainer: Ep 013/30 | train_loss=1.0063 acc=42.91% | val_loss=1.0673 val_acc=50.39%
+2026-04-13 18:47:28 INFO hybrid_activity_recognition.training.trainer: Ep 014/30 | train_loss=0.9558 acc=44.38% | val_loss=1.1479 val_acc=47.51%
+2026-04-13 18:47:37 INFO hybrid_activity_recognition.training.trainer: Ep 015/30 | train_loss=0.9741 acc=43.62% | val_loss=1.1662 val_acc=51.59%
+2026-04-13 18:47:47 INFO hybrid_activity_recognition.training.trainer: Ep 016/30 | train_loss=0.9297 acc=44.32% | val_loss=1.0669 val_acc=46.73%
+2026-04-13 18:47:56 INFO hybrid_activity_recognition.training.trainer: Ep 017/30 | train_loss=0.9374 acc=44.42% | val_loss=1.0858 val_acc=49.33%
+2026-04-13 18:48:06 INFO hybrid_activity_recognition.training.trainer: Ep 018/30 | train_loss=0.9674 acc=45.37% | val_loss=1.0981 val_acc=49.32%
+2026-04-13 18:48:15 INFO hybrid_activity_recognition.training.trainer: Ep 019/30 | train_loss=0.8524 acc=45.88% | val_loss=1.2071 val_acc=51.79%
+2026-04-13 18:48:25 INFO hybrid_activity_recognition.training.trainer: Ep 020/30 | train_loss=0.8784 acc=45.49% | val_loss=1.1863 val_acc=49.56%
+2026-04-13 18:48:34 INFO hybrid_activity_recognition.training.trainer: Ep 021/30 | train_loss=0.9012 acc=45.39% | val_loss=1.0640 val_acc=47.41%
+2026-04-13 18:48:44 INFO hybrid_activity_recognition.training.trainer: Ep 022/30 | train_loss=0.8210 acc=44.96% | val_loss=1.1028 val_acc=50.67%
+2026-04-13 18:48:53 INFO hybrid_activity_recognition.training.trainer: Ep 023/30 | train_loss=0.8384 acc=46.20% | val_loss=1.1041 val_acc=48.92%
+2026-04-13 18:49:02 INFO hybrid_activity_recognition.training.trainer: Ep 024/30 | train_loss=0.7842 acc=46.76% | val_loss=1.0093 val_acc=49.40%
+2026-04-13 18:49:12 INFO hybrid_activity_recognition.training.trainer: Ep 025/30 | train_loss=0.7749 acc=47.60% | val_loss=1.2416 val_acc=48.08%
+2026-04-13 18:49:22 INFO hybrid_activity_recognition.training.trainer: Ep 026/30 | train_loss=0.7501 acc=47.74% | val_loss=1.2424 val_acc=49.50%
+2026-04-13 18:49:32 INFO hybrid_activity_recognition.training.trainer: Ep 027/30 | train_loss=0.7577 acc=47.77% | val_loss=1.1732 val_acc=51.28%
+2026-04-13 18:49:41 INFO hybrid_activity_recognition.training.trainer: Ep 028/30 | train_loss=0.6696 acc=47.88% | val_loss=1.3209 val_acc=50.14%
+2026-04-13 18:49:51 INFO hybrid_activity_recognition.training.trainer: Ep 029/30 | train_loss=0.6916 acc=48.13% | val_loss=1.1884 val_acc=51.67%
+2026-04-13 18:50:01 INFO hybrid_activity_recognition.training.trainer: Ep 030/30 | train_loss=0.6585 acc=49.17% | val_loss=1.1918 val_acc=51.87%
+2026-04-13 18:50:01 INFO __main__: test: acc=0.5279 macro_f1=0.3956
+2026-04-13 19:12:49 INFO __main__: device=cuda
+2026-04-13 19:12:50 INFO __main__: classes=18 n_tsfel_feats=75
