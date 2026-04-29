@@ -51,7 +51,7 @@ class Trainer:
         cw = None
         if use_class_weights:
             cw = balanced_class_weights(labels, num_classes).to(self.device)
-        criterion = supervised_loss_fn(cw)
+        criterion = supervised_loss_fn(cw, use_focal_loss=True)
         optimizer = torch.optim.AdamW(self.model.parameters(), lr=lr, weight_decay=weight_decay)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", patience=scheduler_patience, factor=scheduler_factor
@@ -263,7 +263,9 @@ class Trainer:
                     mask = max_probs.ge(threshold).float()
                     totals["mask"] += mask.mean().item()
 
-                st_s, st_f = augmenter.strong_aug(x_s_u, x_f_u)
+                # CHANGED HERE: Utilizing SA-CutOut instead of generic strong augmentations
+                st_s, st_f = augmenter.sa_strong_aug(x_s_u, x_f_u)
+                
                 logits_strong = self.model(st_s, st_f)
                 loss_u_elem = torch.nn.functional.cross_entropy(
                     logits_strong, pseudo, reduction="none"

@@ -52,6 +52,12 @@ def parse_args():
         default="hybrid",
         help="deep_only = encoder → head; hybrid = encoder + TSFEL → fusion → head",
     )
+    p.add_argument(
+        "--fusion_type",
+        choices=("concat", "gca"),
+        default="concat",
+        help="Fusion mechanism for hybrid mode: concat or gca (Gated Cross-Attention)",
+    )
 
     # --- Data ---
     p.add_argument("--labeled_parquet", type=str, default="", help="Single windowed parquet (legacy 80/10/10 split).")
@@ -76,13 +82,14 @@ def parse_args():
     p.add_argument("--lr", type=float, default=None, help="Learning rate (if omitted, uses mode default)")
     p.add_argument("--hidden_lstm", type=int, default=None)
     p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
+    p.add_argument("--use_focal_loss", action="store_true", help="Supervised/Finetune: use Focal Loss for long-tail distribution")
 
     # --- PatchTST-specific ---
     p.add_argument("--patchtst_d_model", type=int, default=128)
-    p.add_argument("--patchtst_num_layers", type=int, default=3)
+    p.add_argument("--patchtst_num_layers", type=int, default=2)
     p.add_argument("--patchtst_num_heads", type=int, default=4)
     p.add_argument("--patchtst_patch_length", type=int, default=8)
-    p.add_argument("--patchtst_patch_stride", type=int, default=8)
+    p.add_argument("--patchtst_patch_stride", type=int, default=4)
     p.add_argument("--patchtst_dropout", type=float, default=0.1)
 
     # --- Pretrain-specific ---
@@ -200,6 +207,7 @@ def main():
         model = build_hybrid_model(
             encoder_name=args.model,
             input_mode=args.input_mode,
+            fusion_type=args.fusion_type,
             num_classes=num_classes,
             n_tsfel_feats=n_feats,
             **encoder_kwargs,
@@ -220,6 +228,7 @@ def main():
     model = build_hybrid_model(
         encoder_name=args.model,
         input_mode=args.input_mode,
+        fusion_type=args.fusion_type,
         num_classes=num_classes,
         n_tsfel_feats=n_feats,
         **encoder_kwargs,
@@ -236,6 +245,7 @@ def main():
             epochs=args.epochs,
             lr=lr,
             use_class_weights=not args.no_class_weights,
+            use_focal_loss=args.use_focal_loss,
             resume_from=resume,
         )
         res = trainer.evaluate(test_dl, out / "best.pt")
@@ -247,7 +257,7 @@ def main():
         load_from = args.checkpoint or (out / "best.pt")
         lr = args.lr if args.lr is not None else 1e-4
         if trainer.finetune(
-            train_dl, val_dl, load_path=load_from, epochs=args.epochs, lr=lr
+            train_dl, val_dl, load_path=load_from, epochs=args.epochs, lr=lr, use_focal_loss=args.use_focal_loss
         ) is None:
             raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
         res = trainer.evaluate(test_dl, out / "finetuned_best.pt")

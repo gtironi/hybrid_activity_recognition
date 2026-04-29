@@ -17,8 +17,11 @@ from __future__ import annotations
 from hybrid_activity_recognition.models.modular.encoders import (
     CNNLSTMEncoder,
     RobustCNNLSTMEncoder,
+    MoPFormerEncoder
 )
-from hybrid_activity_recognition.models.modular.fusion import ConcatFusion
+
+# Added GatedCrossAttentionFusion to the imports
+from hybrid_activity_recognition.models.modular.fusion import ConcatFusion, GatedCrossAttentionFusion
 from hybrid_activity_recognition.models.modular.heads import LinearHead, MLPHead
 from hybrid_activity_recognition.models.modular.model import HybridModel
 from hybrid_activity_recognition.models.modular.tsfel_branches import MLPTsfelBranch
@@ -32,12 +35,14 @@ _LEGACY_MAP: dict[str, tuple[str, str]] = {
 _ENCODER_REGISTRY: dict[str, type] = {
     "cnn_lstm": CNNLSTMEncoder,
     "robust": RobustCNNLSTMEncoder,
+    "mopformer": MoPFormerEncoder,
 }
 
 
 def build_hybrid_model(
     encoder_name: str,
     input_mode: str = "hybrid",
+    fusion_type: str = "concat",
     num_classes: int = 19,
     n_tsfel_feats: int = 120,
     head_hidden_dim: int = 256,
@@ -54,6 +59,8 @@ def build_hybrid_model(
         ``"cnn_lstm"`` | ``"robust"`` | ``"patchtst"`` (or legacy names).
     input_mode : str
         ``"deep_only"`` or ``"hybrid"``.
+    fusion_type : str
+        ``"concat"`` or ``"gca"``.
     num_classes : int
         Number of output classes.
     n_tsfel_feats : int
@@ -92,7 +99,13 @@ def build_hybrid_model(
     if input_mode == "hybrid":
         tsfel_hidden = tsfel_hidden_dim if tsfel_hidden_dim is not None else encoder.output_dim
         tsfel_branch = MLPTsfelBranch(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
-        fusion = ConcatFusion(encoder.output_dim, tsfel_branch.output_dim)
+        
+        # <-- Added routing logic for Fusion Type -->
+        if fusion_type == "gca":
+            fusion = GatedCrossAttentionFusion(encoder.output_dim, tsfel_branch.output_dim)
+        else:
+            fusion = ConcatFusion(encoder.output_dim, tsfel_branch.output_dim)
+            
         head_in_dim = fusion.output_dim
     elif input_mode == "deep_only":
         head_in_dim = encoder.output_dim
