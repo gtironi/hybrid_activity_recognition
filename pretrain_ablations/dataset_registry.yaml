@@ -1,0 +1,120 @@
+datasets:
+  har_tfc:
+    root: data/processed/HAR
+    raw_root: "data/HAR UCI"
+    format: pt
+    task: classification
+    channel_names:
+      - body_acc_x
+      - body_acc_y
+      - body_acc_z
+    channel0_physical: body_acc_x
+    num_channels: 3
+    sampling_hz: 50
+    window_len: 206
+    num_classes: 6
+    label_names:
+      - WALKING
+      - WALKING_UPSTAIRS
+      - WALKING_DOWNSTAIRS
+      - SITTING
+      - STANDING
+      - LAYING
+    split_policy: subject_held_out
+    group_col: subject_id
+    notes: "TFC-processed .pt; shape (N,3,206). subset=False for real runs."
+
+  actbecalf_windowed:
+    root: dataset/processed/AcTBeCalf
+    format: parquet_long
+    task: classification
+    channel_names:
+      - accX
+      - accY
+      - accZ
+    channel0_physical: accX
+    num_channels: 3
+    sampling_hz: 25
+    window_len: 75
+    num_classes: ~
+    split_policy: group_split_calf_id
+    group_col: calfId
+    notes: "Long-format parquet; windowed at export. group-split by calfId."
+
+  dog:
+    root: data/dog
+    format: csv
+    default_source: dog_w50.csv
+    default_window_len: 10
+    default_stride: 5
+    channel_names:
+      - ABack_x
+      - ABack_y
+      - ABack_z
+      - ANeck_x
+      - ANeck_y
+      - ANeck_z
+    channel0_physical: ABack_x
+    num_channels: 6
+    window_len: 10
+    num_classes: 17
+    split_policy: subject_held_out
+    group_col: DogID
+    notes: "Each row = one raw timestep. Window at export time."
+
+  dog_w50_w10:
+    root: data/dog
+    source_csv: dog_w50.csv
+    format: csv_windowed
+    task: classification
+    channel_names: [ABack_x, ABack_y, ABack_z, ANeck_x, ANeck_y, ANeck_z]
+    channel0_physical: ABack_x
+    num_channels: 6
+    window_len: 10
+    stride: 5
+    num_classes: 17
+    split_policy: subject_held_out
+    group_col: DogID
+    processed_root: pretrain_ablations/processed/dog_w50_w10
+
+  dog_w10_w20:
+    root: data/dog
+    source_csv: dog_w10.csv
+    format: csv_windowed
+    task: classification
+    channel_names: [ABack_x, ABack_y, ABack_z, ANeck_x, ANeck_y, ANeck_z]
+    channel0_physical: ABack_x
+    num_channels: 6
+    window_len: 20
+    stride: 10
+    num_classes: 17
+    split_policy: subject_held_out
+    group_col: DogID
+    processed_root: pretrain_ablations/processed/dog_w10_w20
+
+  dog_w100_w10:
+    root: data/dog
+    source_csv: dog_w100.csv
+    format: csv_windowed
+    task: classification
+    channel_names: [ABack_x, ABack_y, ABack_z, ANeck_x, ANeck_y, ANeck_z]
+    channel0_physical: ABack_x
+    num_channels: 6
+    window_len: 10
+    stride: 5
+    num_classes: 17
+    split_policy: subject_held_out
+    group_col: DogID
+    processed_root: pretrain_ablations/processed/dog_w100_w10
+
+  etth:
+    root: data/etth
+    format: csv
+    task: forecasting_sanity
+    channel_names: [OT]
+    channel0_physical: OT
+    num_channels: 1
+    window_len: 512
+    num_classes: 0
+    split_policy: chronological
+    notes: "Forecasting sanity ONLY. Never pass to classification pipeline."

@@ -1,0 +1,13 @@
+# Supervised baseline: cnn_tfc on HAR, no pretraining
+run_name: "har_sup_cnn_tfc_s42"
+device: "cpu"
+data:
+  dataset_id: "har_tfc"
+encoder:
+  name: "cnn_tfc"
+pretext:
+  method: "supervised"
+  epochs: 1    # placeholder — override with e.g. --override pretext.epochs=1
+finetune:
+  mode: "full"
+  epochs: 50

@@ -1,0 +1,14 @@
+# MAE pretrain + freeze: patchtst on HAR
+run_name: "har_mae_ptst_freeze_s42"
+device: "cpu"
+data:
+  dataset_id: "har_tfc"
+encoder:
+  name: "patchtst"
+pretext:
+  method: "mae"
+  epochs: 50
+  mask_ratio: 0.4
+finetune:
+  mode: "freeze"
+  epochs: 30

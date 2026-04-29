@@ -1,0 +1,14 @@
+# TFC pretrain + freeze finetune: cnn_tfc on HAR
+run_name: "har_tfc_cnn_freeze_s42"
+device: "cpu"
+data:
+  dataset_id: "har_tfc"
+encoder:
+  name: "cnn_tfc"
+pretext:
+  method: "tfc"
+  epochs: 50
+  lr: 3e-4
+finetune:
+  mode: "freeze"
+  epochs: 30

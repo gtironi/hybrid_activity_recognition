@@ -1,0 +1,13 @@
+# Supervised baseline: patchtst on HAR, no pretraining
+run_name: "har_sup_patchtst_s42"
+device: "cpu"
+data:
+  dataset_id: "har_tfc"
+encoder:
+  name: "patchtst"
+pretext:
+  method: "supervised"
+  epochs: 1    # placeholder — override with e.g. --override pretext.epochs=1
+finetune:
+  mode: "full"
+  epochs: 50

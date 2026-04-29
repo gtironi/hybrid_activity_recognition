@@ -1,0 +1,73 @@
+# Base config — override per experiment
+run_name: "unnamed"
+seed: 42
+device: "cpu"
+output_root: "pretrain_ablations/runs"
+
+data:
+  dataset_id: "har_tfc"
+  registry_path: "pretrain_ablations/dataset_registry.yaml"
+  batch_size: 64
+  num_workers: 0
+  normalize: true
+  channel_policy: "first_only"
+
+encoder:
+  name: "cnn_tfc"
+  d_model: 128
+  kernel_size: 8
+  stride: 1
+  final_out_channels: 128
+  cnn_dropout: 0.35
+  base_channels: 64
+  num_blocks: 3
+  patch_length: 8
+  patch_stride: 8
+  num_heads: 4
+  num_layers: 3
+  dropout: 0.1
+
+pretext:
+  method: "supervised"
+  epochs: 100
+  lr: 3e-4
+  weight_decay: 1e-4
+  grad_clip: 1.0
+  temperature: 0.2
+  projection_dim: 128
+  mask_ratio: 0.4
+  tfc_lambda: 0.2
+  tstcc_lambda: 0.5
+  jitter_sigma: 0.3
+  scale_sigma: 0.1
+  permutation_max_segs: 5
+  freq_remove_ratio: 0.1
+  freq_add_ratio: 0.1
+  collapse_check_every: 10
+  collapse_knn_k: 5
+  collapse_max_samples: 5000
+
+finetune:
+  mode: "full"
+  epochs: 50
+  lr: 1e-3
+  encoder_lr_factor: 0.1
+  partial_k: 1
+  weight_decay: 1e-4
+  grad_clip: 1.0
+  class_weights: true
+  early_stopping_patience: 10
+  scheduler_patience: 5
+  scheduler_factor: 0.3
+
+head:
+  name: "mlp"
+  hidden_dim: 256
+  num_layers: 2
+  dropout: 0.3
+
+eval:
+  tsne_max_points: 5000
+  tsne_perplexity: 30
+  tsne_seed: 42
+  save_embeddings: true

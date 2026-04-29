@@ -1,0 +1,11 @@
+torch>=2.1
+transformers>=4.40.0
+pandas>=2.0
+pyarrow
+numpy
+scikit-learn
+matplotlib
+seaborn
+omegaconf
+pyyaml
+tqdm
