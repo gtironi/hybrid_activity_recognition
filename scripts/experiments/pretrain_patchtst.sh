@@ -13,7 +13,7 @@ fi
 mkdir -p "${OUT}"
 
 echo ">>> Starting PatchTST pretraining at $(date)"
-if [ -f "${OUT}/checkpoint.pt" ]; then
+    if [ -f "${OUT}/checkpoint.pt" ]; then
     echo ">>> Checkpoint found, resuming pretraining..."
     python -m hybrid_activity_recognition.main \
         --mode pretrain \
@@ -24,7 +24,10 @@ if [ -f "${OUT}/checkpoint.pt" ]; then
         --batch_size "$BATCH_SIZE" \
         --seed "$SEED" \
         --device "$DEVICE" \
-        --checkpoint "${OUT}/checkpoint.pt" \
+            --checkpoint "${OUT}/checkpoint.pt" \
+            ${CONTEXT_LENGTH:+--context_length "$CONTEXT_LENGTH"} \
+            ${PATCH_LEN:+--patch_len "$PATCH_LEN"} \
+            ${STRIDE:+--stride "$STRIDE"} \
         2>&1 | tee -a "${OUT}/train.log"
 else
     python -m hybrid_activity_recognition.main \
@@ -36,7 +39,10 @@ else
         --batch_size "$BATCH_SIZE" \
         --seed "$SEED" \
         --device "$DEVICE" \
-        2>&1 | tee -a "${OUT}/train.log"
+            ${CONTEXT_LENGTH:+--context_length "$CONTEXT_LENGTH"} \
+            ${PATCH_LEN:+--patch_len "$PATCH_LEN"} \
+            ${STRIDE:+--stride "$STRIDE"} \
+            2>&1 | tee -a "${OUT}/train.log"
 fi
 
 touch "${OUT}/DONE"

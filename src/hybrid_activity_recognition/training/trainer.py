@@ -42,6 +42,7 @@ class Trainer:
         train_dl: DataLoader,
         val_dl: DataLoader,
         num_classes: int,
+        test_dl: DataLoader | None = None,
         epochs: int = 50,
         lr: float = 1e-3,
         weight_decay: float = 5e-4,
@@ -124,10 +125,38 @@ class Trainer:
             avg_val_loss = val_loss / len(val_dl.dataset)
             val_acc = 100.0 * v_correct / v_total
 
-            logger.info(
-                "Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%%",
-                epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
-            )
+            # Optional: evaluate on test set each epoch (user requested). This may slow training.
+            test_loss_val = None
+            if test_dl is not None:
+                test_loss = 0.0
+                t_correct = t_total = 0
+                with torch.no_grad():
+                    for x_sig, x_feat, y in test_dl:
+                        x_sig, x_feat, y = x_sig.to(self.device), x_feat.to(self.device), y.to(self.device)
+                        logits = self.model(x_sig, x_feat)
+                        test_loss += criterion(logits, y).item() * x_sig.size(0)
+                        t_correct += (logits.argmax(1) == y).sum().item()
+                        t_total += y.size(0)
+                test_loss_val = test_loss / len(test_dl.dataset)
+                test_acc = 100.0 * t_correct / t_total if t_total > 0 else 0.0
+
+            if test_loss_val is None:
+                logger.info(
+                    "Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%%",
+                    epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
+                )
+            else:
+                logger.info(
+                    "Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%% | test_loss=%.4f test_acc=%.2f%%",
+                    epoch + 1,
+                    epochs,
+                    avg_train_loss,
+                    train_acc,
+                    avg_val_loss,
+                    val_acc,
+                    test_loss_val,
+                    test_acc,
+                )
             scheduler.step(avg_val_loss)
 
             if val_acc > best_acc:

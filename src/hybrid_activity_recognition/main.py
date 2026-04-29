@@ -255,6 +255,7 @@ def main():
             train_dl,
             val_dl,
             num_classes,
+            test_dl=test_dl,
             epochs=args.epochs,
             lr=lr,
             use_class_weights=not args.no_class_weights,

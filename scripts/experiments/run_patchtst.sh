@@ -21,15 +21,26 @@ export BATCH_SIZE="${PATCHTST_BATCH_SIZE:-128}"
 SKIP_PRETRAIN="${SKIP_PRETRAIN:-0}"
 PATCHTST_CHECKPOINT="${PATCHTST_CHECKPOINT:-}"
 
+# PatchTST window/patch defaults. Can be overridden via env vars.
+# Use 128 for UCI_HAR windows, otherwise default to 75.
+if [ "${DATASET_ID:-}" = "UCI_HAR" ]; then
+    CONTEXT_LENGTH="${CONTEXT_LENGTH:-128}"
+else
+    CONTEXT_LENGTH="${CONTEXT_LENGTH:-75}"
+fi
+PATCH_LEN="${PATCH_LEN:-12}"
+STRIDE="${STRIDE:-12}"
+export CONTEXT_LENGTH PATCH_LEN STRIDE
+
 echo ">>> PatchTST: from scratch (no MAE checkpoint)"
 export RUN_SUFFIX=fromscratch
 unset FREEZE_ENCODER || true
 for MODE in deep_only hybrid; do
-    run_experiment "patchtst" "$MODE"
+    run_experiment "patchtst" "$MODE" --context_length "$CONTEXT_LENGTH" --patch_len "$PATCH_LEN" --stride "$STRIDE"
 done
 
 export RUN_SUFFIX=fromscratch_hf
-run_experiment "patchtst" "deep_only" --head patchtst_hf
+run_experiment "patchtst" "deep_only" --head patchtst_hf --context_length "$CONTEXT_LENGTH" --patch_len "$PATCH_LEN" --stride "$STRIDE"
 unset RUN_SUFFIX
 
 if [ -z "$PATCHTST_CHECKPOINT" ] && [ "$SKIP_PRETRAIN" = "1" ]; then
@@ -53,19 +64,19 @@ echo ">>> PatchTST: supervised from MAE checkpoint (full encoder training)"
 export RUN_SUFFIX=frompretrain
 unset FREEZE_ENCODER || true
 for MODE in deep_only hybrid; do
-    run_experiment "patchtst" "$MODE" --patchtst_checkpoint "$PATCHTST_CHECKPOINT"
+    run_experiment "patchtst" "$MODE" --patchtst_checkpoint "$PATCHTST_CHECKPOINT" --context_length "$CONTEXT_LENGTH" --patch_len "$PATCH_LEN" --stride "$STRIDE"
 done
 
 echo ">>> PatchTST: HF classification head + MAE checkpoint"
 export RUN_SUFFIX=frompretrain_hf
-run_experiment "patchtst" "deep_only" --head patchtst_hf --patchtst_checkpoint "$PATCHTST_CHECKPOINT"
+run_experiment "patchtst" "deep_only" --head patchtst_hf --patchtst_checkpoint "$PATCHTST_CHECKPOINT" --context_length "$CONTEXT_LENGTH" --patch_len "$PATCH_LEN" --stride "$STRIDE"
 unset RUN_SUFFIX
 
 echo ">>> PatchTST: supervised from MAE with encoder frozen"
 export RUN_SUFFIX=frompretrain_encfrozen
 export FREEZE_ENCODER=1
 for MODE in deep_only hybrid; do
-    run_experiment "patchtst" "$MODE" --patchtst_checkpoint "$PATCHTST_CHECKPOINT"
+    run_experiment "patchtst" "$MODE" --patchtst_checkpoint "$PATCHTST_CHECKPOINT" --context_length "$CONTEXT_LENGTH" --patch_len "$PATCH_LEN" --stride "$STRIDE"
 done
 unset FREEZE_ENCODER
 unset RUN_SUFFIX
