@@ -53,6 +53,9 @@ class Trainer:
         checkpoint_name: str = "best.pt",
         resume_from: str | Path | None = None,
         freeze_encoder: bool = False,
+        loss_type: str = "ce",
+        focal_gamma: float = 2.0,
+        tsfel_dropout_p: float = 0.0,
     ) -> nn.Module:
         best_wts = copy.deepcopy(self.model.state_dict())
         best_acc = 0.0
@@ -75,7 +78,9 @@ class Trainer:
         cw = None
         if use_class_weights:
             cw = balanced_class_weights(labels, num_classes).to(self.device)
-        criterion = supervised_loss_fn(cw)
+        criterion = supervised_loss_fn(cw, loss_type=loss_type, focal_gamma=focal_gamma)
+        logger.info("loss=%s focal_gamma=%.2f class_weights=%s tsfel_dropout_p=%.2f",
+                    loss_type, focal_gamma, cw is not None, tsfel_dropout_p)
         optimizer = torch.optim.AdamW(_iter_trainable_params(self.model), lr=lr, weight_decay=weight_decay)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", patience=scheduler_patience, factor=scheduler_factor
@@ -95,6 +100,8 @@ class Trainer:
             total = 0
             for x_sig, x_feat, y in train_dl:
                 x_sig, x_feat, y = x_sig.to(self.device), x_feat.to(self.device), y.to(self.device)
+                if tsfel_dropout_p > 0.0 and torch.rand(1).item() < tsfel_dropout_p:
+                    x_feat = torch.zeros_like(x_feat)
                 optimizer.zero_grad(set_to_none=True)
                 logits = self.model(x_sig, x_feat)
                 loss = criterion(logits, y)

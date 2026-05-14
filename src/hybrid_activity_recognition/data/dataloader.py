@@ -6,7 +6,7 @@ import torch
 import sys
 from pathlib import Path
 from sklearn.preprocessing import LabelEncoder, StandardScaler
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SCRIPTS_DIR = _REPO_ROOT / "scripts"
@@ -118,6 +118,7 @@ def prepare_train_val_test_loaders(
     random_state: int = 42,
     val_fraction: float = 0.2,
     parquet_val_path: str | None = None,
+    balanced_sampler: bool = False,
 ) -> tuple[DataLoader, DataLoader, DataLoader, np.ndarray, int, int, LabelEncoder]:
     """
     Treino e teste em Parquets distintos (ex.: por sujeito). Ajusta média/desvio do sinal e
@@ -206,13 +207,31 @@ def prepare_train_val_test_loaders(
     n_feats = len(feat_cols)
 
     pin_memory = torch.cuda.is_available()
-    train_dl = DataLoader(
-        CalfHybridDataset(signals_tr_n, features_tr_n, y_tr),
-        batch_size=batch_size,
-        shuffle=True,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-    )
+    train_ds = CalfHybridDataset(signals_tr_n, features_tr_n, y_tr)
+    if balanced_sampler:
+        class_counts = np.bincount(y_tr, minlength=num_classes).astype(np.float32)
+        inv_freq = np.where(class_counts > 0, 1.0 / class_counts, 0.0)
+        sample_weights = inv_freq[y_tr]
+        sampler = WeightedRandomSampler(
+            weights=torch.as_tensor(sample_weights, dtype=torch.double),
+            num_samples=len(y_tr),
+            replacement=True,
+        )
+        train_dl = DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            sampler=sampler,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
+    else:
+        train_dl = DataLoader(
+            train_ds,
+            batch_size=batch_size,
+            shuffle=True,
+            num_workers=num_workers,
+            pin_memory=pin_memory,
+        )
     val_dl = DataLoader(
         CalfHybridDataset(signals_val_n, features_val_n, y_val),
         batch_size=batch_size,
