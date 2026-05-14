@@ -79,6 +79,10 @@ def parse_args():
     p.add_argument("--balanced_sampler", action="store_true", help="Use WeightedRandomSampler (inverse class freq) for train loader.")
     p.add_argument("--tsfel_dropout_p", type=float, default=0.0,
                    help="Probability of zeroing the TSFEL feature vector during training (forces encoder to carry signal). 0.0 disables.")
+    p.add_argument("--tsfel_dropout_warmup_epochs", type=int, default=0,
+                   help="During the first N epochs, force TSFEL dropout p=1.0 (curriculum: encoder-only warmup). After N, reverts to --tsfel_dropout_p.")
+    p.add_argument("--init_encoder_from", type=str, default="",
+                   help="Load only the encoder submodule weights from this checkpoint (deep_only -> hybrid warmup). Skipped if empty.")
     p.add_argument(
         "--freeze_encoder",
         action="store_true",
@@ -256,6 +260,21 @@ def main():
         **encoder_kwargs,
     ).to(device)
     logger.info("model (%s/%s):\n%s", args.model, args.input_mode, model)
+
+    if args.init_encoder_from:
+        src = Path(args.init_encoder_from)
+        if not src.is_file():
+            raise SystemExit(f"--init_encoder_from: file not found: {src}")
+        state = torch.load(src, map_location=device, weights_only=True)
+        if isinstance(state, dict) and "model_state_dict" in state:
+            state = state["model_state_dict"]
+        enc_state = {k[len("encoder."):]: v for k, v in state.items() if k.startswith("encoder.")}
+        if not enc_state:
+            raise SystemExit(f"--init_encoder_from: no 'encoder.*' keys found in {src}")
+        miss, unex = model.encoder.load_state_dict(enc_state, strict=False)
+        logger.info("Loaded encoder from %s (loaded=%d, missing=%d, unexpected=%d)",
+                    src, len(enc_state), len(miss), len(unex))
+
     trainer = Trainer(model, device, out)
 
     if args.mode == "supervised":
@@ -273,6 +292,7 @@ def main():
             loss_type=args.loss_type,
             focal_gamma=args.focal_gamma,
             tsfel_dropout_p=args.tsfel_dropout_p,
+            tsfel_dropout_warmup_epochs=args.tsfel_dropout_warmup_epochs,
         )
         res = trainer.evaluate(test_dl, out / "best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
