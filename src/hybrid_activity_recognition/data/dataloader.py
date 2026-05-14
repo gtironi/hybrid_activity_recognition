@@ -3,9 +3,17 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 import torch
-from sklearn.model_selection import train_test_split
+import sys
+from pathlib import Path
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from torch.utils.data import DataLoader, Dataset
+
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+_SCRIPTS_DIR = _REPO_ROOT / "scripts"
+if str(_SCRIPTS_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPTS_DIR))
+
+import genSplit
 
 # Colunas meta comuns entre pipelines (window_creator_* e notebook)
 _STANDARD_COLS = frozenset(
@@ -30,6 +38,62 @@ def _feature_columns(df: pd.DataFrame) -> list[str]:
     return [c for c in df.columns if c not in _STANDARD_COLS]
 
 
+def _subject_behavior_wide(df: pd.DataFrame, subject_col: str, behavior_col: str) -> pd.DataFrame:
+    g = df.groupby([subject_col, behavior_col], sort=False).size().rename("n").reset_index()
+    wide = g.pivot(index=subject_col, columns=behavior_col, values="n").fillna(0).astype(np.int64)
+    return wide.reset_index().rename(columns={subject_col: "subject_id"})
+
+
+def _split_train_val_by_subject_gen_split(
+    df_train: pd.DataFrame,
+    *,
+    subject_column: str,
+    label_column: str,
+    val_fraction: float,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    if not 0 < val_fraction < 1:
+        raise ValueError("val_fraction deve estar em ]0, 1[ quando não há parquet_val.")
+
+    if subject_column not in df_train.columns:
+        raise ValueError(f"Coluna de sujeito ausente: {subject_column!r}")
+
+    wide = _subject_behavior_wide(df_train, subject_column, label_column)
+    subjects = sorted(wide["subject_id"].unique().tolist(), key=str)
+    n_sub = len(subjects)
+    if n_sub < 2:
+        raise ValueError("São necessários pelo menos 2 sujeitos no treino para criar validação.")
+
+    val_pct = round(100.0 * val_fraction)
+    train_pct = 100 - val_pct
+    if train_pct + val_pct != 100 or val_pct <= 0:
+        raise ValueError(
+            f"val_fraction inválido para split por sujeitos: {val_fraction!r}. "
+            "Escolha um valor que produza porcentagens inteiras para treino/validação."
+        )
+
+    n_tr, n_val, n_te = genSplit.calc_split_subject_amounts(
+        n_sub, {"train": float(train_pct), "validation": float(val_pct), "test": 0.0}
+    )
+    if n_te != 0 or n_val < 1 or n_tr < 1:
+        raise ValueError(f"Contagem inválida de sujeitos: train={n_tr} val={n_val} test={n_te} (n={n_sub}).")
+
+    split_ratio = val_fraction / (1.0 - val_fraction)
+    val_tuple = genSplit.find_optimal_calf_combinations_for_split(
+        tuple(subjects), n_val, wide, split_ratio, cv=1
+    )
+    if val_tuple is None:
+        raise ValueError(
+            "genSplit não encontrou combinação válida para validação; "
+            "todas as classes precisam permanecer no treino."
+        )
+
+    val_ids = set(val_tuple)
+    mask = df_train[subject_column].isin(val_ids)
+    df_tr = df_train.loc[~mask].reset_index(drop=True)
+    df_val = df_train.loc[mask].reset_index(drop=True)
+    return df_tr, df_val
+
+
 def _stack_signals(df: pd.DataFrame) -> np.ndarray:
     x_stack = np.stack(df["acc_x"].values)
     y_stack = np.stack(df["acc_y"].values)
@@ -52,7 +116,7 @@ def prepare_train_val_test_loaders(
     batch_size: int = 64,
     num_workers: int = 2,
     random_state: int = 42,
-    val_fraction: float = 0.05,
+    val_fraction: float = 0.2,
     parquet_val_path: str | None = None,
 ) -> tuple[DataLoader, DataLoader, DataLoader, np.ndarray, int, int, LabelEncoder]:
     """
@@ -77,18 +141,13 @@ def prepare_train_val_test_loaders(
         df_val = _align_tsfel_columns(df_val, feat_cols)
         df_tr = df_train.reset_index(drop=True)
     else:
-        if val_fraction <= 0 or val_fraction >= 1:
-            raise ValueError("val_fraction deve estar em ]0, 1[ quando não há parquet_val.")
-        indices = np.arange(len(df_train))
-        labels_for_split = df_train["label"].values
-        train_idx, val_idx = train_test_split(
-            indices,
-            test_size=val_fraction,
-            stratify=labels_for_split,
-            random_state=random_state,
+        subject_col = "calf_id" if "calf_id" in df_train.columns else "calfId"
+        df_tr, df_val = _split_train_val_by_subject_gen_split(
+            df_train,
+            subject_column=subject_col,
+            label_column="label",
+            val_fraction=val_fraction,
         )
-        df_tr = df_train.iloc[train_idx].reset_index(drop=True)
-        df_val = df_train.iloc[val_idx].reset_index(drop=True)
 
     le = LabelEncoder()
     le.fit(df_tr["label"])
