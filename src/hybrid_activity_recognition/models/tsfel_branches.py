@@ -13,16 +13,35 @@ from hybrid_activity_recognition.models.base import TsfelBranch
 
 
 class MLPTsfelBranch(TsfelBranch):
-    """3-layer MLP with BatchNorm: 256 → 128 → 64, Dropout 0.4 after each block.
+    """Identity TSFEL branch.
 
-    Matches the TsfelOnlyModel MLP from the notebook baseline.
-    Output dim is always 64 regardless of in_features / hidden_dim args.
+    Returns the input tensor unchanged so TSFEL features flow directly into fusion or the head.
     """
 
-    def __init__(self, in_features: int, hidden_dim: int = 256, dropout: float = 0.4):
+    def __init__(self, in_features: int, hidden_dim: int, dropout: float = 0.3):
+        super().__init__()
+        self._output_dim = in_features
+
+    @property
+    def output_dim(self) -> int:
+        return self._output_dim
+
+    def forward(self, x_features: Tensor) -> Tensor:
+        return x_features
+
+
+class DeepMLPTsfelBranch(TsfelBranch):
+    """Three-layer MLP with BatchNorm, ReLU and Dropout per stage.
+
+    Reproduces the ``mlp`` block of ``TsfelOnlyModel`` from
+    ``actbecalf-windowed.ipynb``: ``n_feats -> 256 -> 128 -> 64`` with
+    BN + ReLU + Dropout after every Linear, and Kaiming initialization.
+    """
+
+    def __init__(self, in_features: int, hidden_dim: int = 64, dropout: float = 0.4):
         super().__init__()
         self._output_dim = 64
-        self.net = nn.Sequential(
+        self.mlp = nn.Sequential(
             nn.Linear(in_features, 256),
             nn.BatchNorm1d(256),
             nn.ReLU(),
@@ -41,16 +60,16 @@ class MLPTsfelBranch(TsfelBranch):
     def _init_weights(self) -> None:
         for m in self.modules():
             if isinstance(m, nn.Linear):
-                nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
+                nn.init.kaiming_normal_(m.weight)
                 if m.bias is not None:
-                    nn.init.zeros_(m.bias)
+                    nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm1d):
-                nn.init.ones_(m.weight)
-                nn.init.zeros_(m.bias)
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     @property
     def output_dim(self) -> int:
         return self._output_dim
 
     def forward(self, x_features: Tensor) -> Tensor:
-        return self.net(x_features)
+        return self.mlp(x_features)
