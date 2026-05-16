@@ -3,8 +3,9 @@
 # Runs 4 configs per model:
 #   abl_baseline           : current training (no warm-up, no TSFEL dropout)
 #   abl_warmup_encoder     : load encoder weights from deep_only checkpoint
-#   abl_curriculum10       : first 10 epochs train with TSFEL fully dropped
-#   abl_tsfel_dropout25    : stochastic TSFEL dropout p=0.25 throughout
+#   abl_curriculum10       : first 10 epochs zero TSFEL entirely (p=1.0), then normal
+#   abl_tsfel_dropout25    : per batch, with 25% probability zero the entire TSFEL
+#                            vector (NOT feature-level dropout — all-or-nothing per batch)
 #
 # Assumes the deep_only checkpoints already exist at the standard paths
 # (run scripts/experiments/run_cnn_lstm.sh and run_robust.sh first).
@@ -17,13 +18,14 @@
 set -euo pipefail
 source "$(dirname "$0")/_common.sh"
 
+EXPERIMENTS_BASE="${EXPERIMENTS_BASE:-${REPO_ROOT}/experiments/ablations/warmup}"
 MODELS="${MODELS:-cnn_lstm robust}"
 WARMUP_EPOCHS="${WARMUP_EPOCHS:-10}"
 DROPOUT_P="${DROPOUT_P:-0.25}"
 
 deep_only_ckpt() {
-    # Reconstruct the deep_only run dir using the same naming as make_run_dir,
-    # but always with RUN_SUFFIX empty and MODE=deep_only.
+    # Points to the canonical (non-ablation) experiments dir — deep_only runs
+    # live at the top-level experiments/, not inside ablations/.
     local MODEL="$1"
     echo "${REPO_ROOT}/experiments/${MODEL}_deep_only_${DATASET_ID}_ep${EPOCHS}_bs${BATCH_SIZE_LARGE}_lr${LR}_s${SEED}/best.pt"
 }
@@ -36,6 +38,7 @@ run_combo() {
     export BATCH_SIZE="${BATCH_SIZE_LARGE:-512}"
     echo "=== ${MODEL}/hybrid (${SUFFIX}) ==="
     run_experiment "$MODEL" "hybrid" "$@"
+    run_finetune   "$MODEL" "hybrid"
     unset RUN_SUFFIX
 }
 

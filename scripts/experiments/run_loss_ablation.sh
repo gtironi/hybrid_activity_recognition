@@ -13,6 +13,7 @@ set -euo pipefail
 source "$(dirname "$0")/_common.sh"
 
 # model:mode pairs to ablate. Format "model1:mode1 model2:mode2 ...".
+EXPERIMENTS_BASE="${EXPERIMENTS_BASE:-${REPO_ROOT}/experiments/ablations/loss}"
 MODELS="${MODELS:-cnn_lstm:hybrid patchtst:hybrid robust:hybrid tsfel_mlp:tsfel_only}"
 FOCAL_GAMMA="${FOCAL_GAMMA:-2.0}"
 
@@ -36,6 +37,7 @@ run_combo() {
 
     echo "=== ${MODEL}/${MODE} | loss=${LOSS} sampler=${SAMPLER} (suffix=${suffix}) ==="
     run_experiment "$MODEL" "$MODE" "${extra_args[@]}"
+    run_finetune   "$MODEL" "$MODE"
     unset RUN_SUFFIX
 }
 
