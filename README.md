@@ -164,6 +164,37 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --device cuda
 ```
 
+**Example: CNN+LSTM (or Robust) with TS2Vec contrastive pretraining (optional)**
+
+Self-supervised pretraining for the CNN+LSTM-family encoders. Produces a
+checkpoint loadable via `--init_encoder_from`; omit the flag to keep the
+current behavior. PatchTST is not supported here (use its MAE pretraining
+above instead).
+
+```bash
+# 1. TS2Vec contrastive pretraining (unlabeled signals)
+PYTHONPATH=src python scripts/pretrain_ts2vec.py \
+  --model cnn_lstm \
+  --pretrain_parquet dataset/processed/AcTBeCalf/windowed_train.parquet \
+  --output_dir checkpoints/ts2vec/cnn_lstm \
+  --epochs 100 \
+  --device cuda
+
+# 2. Supervised run initialized from the TS2Vec encoder
+PYTHONPATH=src python -m hybrid_activity_recognition.main \
+  --mode supervised \
+  --model cnn_lstm \
+  --input_mode hybrid \
+  --init_encoder_from checkpoints/ts2vec/cnn_lstm/ts2vec_best.pt \
+  --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
+  --labeled_parquet_test  dataset/processed/AcTBeCalf/windowed_test.parquet \
+  --output_dir experiments/cnn_lstm_hybrid_ts2vec \
+  --device cuda
+```
+
+Note: `--hidden_lstm` (if overridden) must match between the pretrain and the
+supervised run so encoder state_dict keys align.
+
 ### 3. Run Full Experimental Grid
 
 **Smoke test (2 epochs, validates everything works):**

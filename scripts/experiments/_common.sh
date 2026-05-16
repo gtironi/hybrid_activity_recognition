@@ -12,6 +12,8 @@ TRAIN_PARQUET="${TRAIN_PARQUET:-${REPO_ROOT}/dataset/processed/AcTBeCalf/windowe
 TEST_PARQUET="${TEST_PARQUET:-${REPO_ROOT}/dataset/processed/AcTBeCalf/windowed_test.parquet}"
 PRETRAIN_PARQUET="${PRETRAIN_PARQUET:-${TRAIN_PARQUET}}"
 DATASET_ID="${DATASET_ID:-AcTBeCalf}"
+# Base dir where run dirs are created. Override per-script to group ablations.
+EXPERIMENTS_BASE="${EXPERIMENTS_BASE:-${REPO_ROOT}/experiments}"
 
 # --- Default hyperparameters ---
 SEED="${SEED:-2026}"
@@ -37,7 +39,7 @@ make_run_dir() {
     if [ -n "$suf" ]; then
         suf="_${suf}"
     fi
-    echo "${REPO_ROOT}/experiments/${MODEL}_${MODE}${suf}_${DATASET_ID}_ep${EPOCHS}_bs${BATCH_SIZE}_lr${LR}_s${SEED}"
+    echo "${EXPERIMENTS_BASE}/${MODEL}_${MODE}${suf}_${DATASET_ID}_ep${EPOCHS}_bs${BATCH_SIZE}_lr${LR}_s${SEED}"
 }
 
 run_experiment() {
@@ -99,6 +101,37 @@ run_experiment() {
 
     touch "${OUT}/DONE"
     echo ">>> ${MODEL}_${MODE} done at $(date)"
+}
+
+run_ts2vec_pretrain() {
+    # Usage: run_ts2vec_pretrain MODEL
+    # Runs TS2Vec pretraining once; skips if all snapshots already exist.
+    # Prints the output_dir to stdout (caller resolves individual checkpoints).
+    local MODEL="$1"
+    local OUT="${EXPERIMENTS_BASE}/ts2vec_pretrain_${MODEL}_${DATASET_ID}_ep${PRETRAIN_EPOCHS}_s${SEED}"
+
+    # All three snapshots must exist to skip.
+    if [ -f "${OUT}/ts2vec_ep20.pt" ] && [ -f "${OUT}/ts2vec_ep50.pt" ] && [ -f "${OUT}/ts2vec_ep100.pt" ]; then
+        echo ">>> TS2Vec pretrain ${MODEL}: all snapshots found, skipping" >&2
+        echo "${OUT}"
+        return 0
+    fi
+    mkdir -p "${OUT}"
+
+    echo ">>> TS2Vec pretraining ${MODEL} at $(date)" >&2
+    python "${REPO_ROOT}/scripts/pretrain_ts2vec.py" \
+        --model "$MODEL" \
+        --pretrain_parquet "$PRETRAIN_PARQUET" \
+        --output_dir "$OUT" \
+        --epochs "$PRETRAIN_EPOCHS" \
+        --batch_size "${BATCH_SIZE_LARGE}" \
+        --lr "$PRETRAIN_LR" \
+        --seed "$SEED" \
+        --device "$DEVICE" \
+        2>&1 | tee -a "${OUT}/pretrain.log" >&2
+
+    echo ">>> TS2Vec pretrain ${MODEL} done at $(date)" >&2
+    echo "${OUT}"
 }
 
 run_finetune() {

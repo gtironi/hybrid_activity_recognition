@@ -143,6 +143,7 @@ def ts2vec_pretrain_encoder(
     temporal_unit: int = 0,
     output_dir: str | Path | None = None,
     log_every: int = 1,
+    snapshot_epochs: tuple[int, ...] = (20, 50, 100),
 ) -> dict:
     """Pretrain ``encoder`` (in-place) with TS2Vec hierarchical contrastive loss.
 
@@ -159,18 +160,22 @@ def ts2vec_pretrain_encoder(
 
     Returns
     -------
-    dict with keys ``loss_log``, ``best_loss``, ``ckpt_path``.
+    dict with keys ``loss_log``, ``best_loss``, ``ckpt_path``, ``snapshot_paths``.
     """
     wrapper = _PerTimestepEncoder(encoder).to(device)
     optimizer = torch.optim.AdamW(wrapper.parameters(), lr=lr, weight_decay=weight_decay)
 
-    out_path = None
-    if output_dir is not None:
-        out_path = Path(output_dir) / "ts2vec_best.pt"
-        Path(output_dir).mkdir(parents=True, exist_ok=True)
+    out_dir = Path(output_dir) if output_dir is not None else None
+    if out_dir is not None:
+        out_dir.mkdir(parents=True, exist_ok=True)
 
     best_loss = float("inf")
     loss_log: list[float] = []
+    snapshot_paths: dict[int, Path] = {}
+
+    def _save_encoder(path: Path) -> None:
+        state = {f"encoder.{k}": v for k, v in encoder.state_dict().items()}
+        torch.save(state, path)
 
     for ep in range(epochs):
         wrapper.train()
@@ -179,7 +184,6 @@ def ts2vec_pretrain_encoder(
         for batch in dataloader:
             x = batch if isinstance(batch, torch.Tensor) else batch[0]
             x = x.to(device)
-            # project uses (B, C, T); TS2Vec adapter expects (B, T, C)
             x_btc = x.transpose(1, 2)
 
             v1 = _augment(x_btc)
@@ -201,10 +205,17 @@ def ts2vec_pretrain_encoder(
 
         if avg < best_loss:
             best_loss = avg
-            if out_path is not None:
-                # Save with "encoder." prefix so it's loadable by --init_encoder_from.
-                state = {f"encoder.{k}": v for k, v in encoder.state_dict().items()}
-                torch.save(state, out_path)
+            if out_dir is not None:
+                _save_encoder(out_dir / "ts2vec_best.pt")
 
-    logger.info("TS2Vec done. best_loss=%.6f saved=%s", best_loss, out_path)
-    return {"loss_log": loss_log, "best_loss": best_loss, "ckpt_path": out_path}
+        # Fixed-epoch snapshots (e.g. ep 20, 50, 100).
+        if out_dir is not None and (ep + 1) in snapshot_epochs:
+            snap_path = out_dir / f"ts2vec_ep{ep + 1}.pt"
+            _save_encoder(snap_path)
+            snapshot_paths[ep + 1] = snap_path
+            logger.info("TS2Vec snapshot saved: %s", snap_path)
+
+    logger.info("TS2Vec done. best_loss=%.6f saved=%s", best_loss, out_dir / "ts2vec_best.pt" if out_dir else None)
+    return {"loss_log": loss_log, "best_loss": best_loss,
+            "ckpt_path": out_dir / "ts2vec_best.pt" if out_dir else None,
+            "snapshot_paths": snapshot_paths}
