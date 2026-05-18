@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from hybrid_activity_recognition.training.loss import balanced_class_weights, supervised_loss_fn
+from hybrid_activity_recognition.training.loss import balanced_class_weights
 
 logger = logging.getLogger(__name__)
 
@@ -53,10 +53,6 @@ class Trainer:
         checkpoint_name: str = "best.pt",
         resume_from: str | Path | None = None,
         freeze_encoder: bool = False,
-        loss_type: str = "ce",
-        focal_gamma: float = 2.0,
-        tsfel_dropout_p: float = 0.0,
-        tsfel_dropout_warmup_epochs: int = 0,
     ) -> nn.Module:
         best_wts = copy.deepcopy(self.model.state_dict())
         best_acc = 0.0
@@ -79,9 +75,8 @@ class Trainer:
         cw = None
         if use_class_weights:
             cw = balanced_class_weights(labels, num_classes).to(self.device)
-        criterion = supervised_loss_fn(cw, loss_type=loss_type, focal_gamma=focal_gamma)
-        logger.info("loss=%s focal_gamma=%.2f class_weights=%s tsfel_dropout_p=%.2f warmup_epochs=%d",
-                    loss_type, focal_gamma, cw is not None, tsfel_dropout_p, tsfel_dropout_warmup_epochs)
+        criterion = nn.CrossEntropyLoss(weight=cw) if cw is not None else nn.CrossEntropyLoss()
+        logger.info("class_weights=%s", cw is not None)
         optimizer = torch.optim.AdamW(_iter_trainable_params(self.model), lr=lr, weight_decay=weight_decay)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", patience=scheduler_patience, factor=scheduler_factor
@@ -99,11 +94,8 @@ class Trainer:
             train_loss = 0.0
             correct = 0
             total = 0
-            effective_p = 1.0 if epoch < tsfel_dropout_warmup_epochs else tsfel_dropout_p
             for x_sig, x_feat, y in train_dl:
                 x_sig, x_feat, y = x_sig.to(self.device), x_feat.to(self.device), y.to(self.device)
-                if effective_p > 0.0 and torch.rand(1).item() < effective_p:
-                    x_feat = torch.zeros_like(x_feat)
                 optimizer.zero_grad(set_to_none=True)
                 logits = self.model(x_sig, x_feat)
                 loss = criterion(logits, y)

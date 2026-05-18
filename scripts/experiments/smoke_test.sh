@@ -8,6 +8,7 @@ source "$(dirname "$0")/_common.sh"
 export EPOCHS=2
 export PRETRAIN_EPOCHS=2
 export BATCH_SIZE=16
+export VAL_FRACTION=0.9   # 10% train data, 90% val — keeps smoke test fast
 
 echo "=== Smoke test (2 epochs, batch_size=16) ==="
 echo "Start: $(date)"

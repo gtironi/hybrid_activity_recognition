@@ -36,7 +36,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Hybrid Activity Recognition — experiments CLI")
 
     # --- Mode & model ---
-    p.add_argument("--mode", choices=("supervised", "pretrain", "finetune", "test"), required=True)
+    p.add_argument("--mode", choices=("supervised", "pretrain", "pretrain_ts2vec", "finetune", "test"), required=True)
     p.add_argument(
         "--model",
         type=str,
@@ -74,15 +74,8 @@ def parse_args():
     p.add_argument("--lr", type=float, default=None, help="Learning rate (if omitted, uses mode default)")
     p.add_argument("--hidden_lstm", type=int, default=None)
     p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
-    p.add_argument("--loss_type", choices=("ce", "focal"), default="ce", help="Supervised loss function.")
-    p.add_argument("--focal_gamma", type=float, default=2.0, help="Gamma for focal loss (only if --loss_type=focal).")
-    p.add_argument("--balanced_sampler", action="store_true", help="Use WeightedRandomSampler (inverse class freq) for train loader.")
-    p.add_argument("--tsfel_dropout_p", type=float, default=0.0,
-                   help="Probability of zeroing the TSFEL feature vector during training (forces encoder to carry signal). 0.0 disables.")
-    p.add_argument("--tsfel_dropout_warmup_epochs", type=int, default=0,
-                   help="During the first N epochs, force TSFEL dropout p=1.0 (curriculum: encoder-only warmup). After N, reverts to --tsfel_dropout_p.")
     p.add_argument("--init_encoder_from", type=str, default="",
-                   help="Load only the encoder submodule weights from this checkpoint (deep_only -> hybrid warmup). Skipped if empty.")
+                   help="Load only encoder weights from this checkpoint (e.g. TS2Vec pretrain). Skipped if empty.")
     p.add_argument(
         "--freeze_encoder",
         action="store_true",
@@ -118,10 +111,14 @@ def parse_args():
         help="Classification head: mlp | linear | patchtst_hf (requires --model patchtst --input_mode deep_only).",
     )
 
-    # --- Pretrain-specific ---
+    # --- Pretrain-specific (shared) ---
     p.add_argument("--pretrain_epochs", type=int, default=100)
     p.add_argument("--pretrain_lr", type=float, default=1e-3)
+    # MAE (PatchTST)
     p.add_argument("--mask_ratio", type=float, default=0.75, help="MAE masking ratio for PatchTST pretraining.")
+    # TS2Vec (CNN+LSTM / robust)
+    p.add_argument("--temporal_unit", type=int, default=0,
+                   help="TS2Vec: minimum pooling scale at which to apply temporal contrast.")
 
     return p.parse_args()
 
@@ -164,7 +161,6 @@ def _prepare_labeled_loaders(args):
         random_state=args.seed,
         val_fraction=args.val_fraction,
         parquet_val_path=val_path,
-        balanced_sampler=getattr(args, "balanced_sampler", False),
     )
 
 
@@ -218,6 +214,39 @@ def main():
             resume_from=resume,
         )
         logger.info("Pretraining complete. Best checkpoint: %s", best_path)
+        return
+
+    # ---- Pretrain TS2Vec mode ----
+    if args.mode == "pretrain_ts2vec":
+        if not args.pretrain_parquet:
+            raise SystemExit("pretrain_ts2vec mode requires --pretrain_parquet")
+        if args.model not in ("cnn_lstm", "robust"):
+            raise SystemExit("pretrain_ts2vec only supports --model cnn_lstm or robust")
+
+        from hybrid_activity_recognition.data.pretrain_dataset import prepare_pretrain_dataloader
+        from hybrid_activity_recognition.models.encoders import CNNLSTMEncoder, RobustCNNLSTMEncoder
+        from hybrid_activity_recognition.training.ts2vec_pretrain import ts2vec_pretrain_encoder
+
+        train_dl, _, _ = prepare_pretrain_dataloader(
+            args.pretrain_parquet,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+        )
+        encoder_cls = CNNLSTMEncoder if args.model == "cnn_lstm" else RobustCNNLSTMEncoder
+        encoder = (
+            encoder_cls(hidden_lstm=args.hidden_lstm) if args.hidden_lstm is not None
+            else encoder_cls()
+        ).to(device)
+        ts2vec_pretrain_encoder(
+            encoder=encoder,
+            dataloader=train_dl,
+            device=device,
+            epochs=args.pretrain_epochs,
+            lr=args.pretrain_lr,
+            temporal_unit=args.temporal_unit,
+            output_dir=out,
+        )
+        logger.info("TS2Vec pretraining complete. Checkpoints in %s", out)
         return
 
     # ---- Test mode ----
@@ -289,10 +318,6 @@ def main():
             use_class_weights=not args.no_class_weights,
             resume_from=resume,
             freeze_encoder=args.freeze_encoder,
-            loss_type=args.loss_type,
-            focal_gamma=args.focal_gamma,
-            tsfel_dropout_p=args.tsfel_dropout_p,
-            tsfel_dropout_warmup_epochs=args.tsfel_dropout_warmup_epochs,
         )
         res = trainer.evaluate(test_dl, out / "best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
