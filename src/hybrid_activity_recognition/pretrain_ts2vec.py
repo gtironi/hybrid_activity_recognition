@@ -1,10 +1,7 @@
 """TS2Vec pretraining CLI for CNN+LSTM-family encoders.
 
-Optional, non-invasive. Produces a checkpoint loadable by main.py's existing
-``--init_encoder_from`` flag.
-
-Example:
-    PYTHONPATH=src python scripts/pretrain_ts2vec.py \\
+Usage:
+    PYTHONPATH=src python -m hybrid_activity_recognition.pretrain_ts2vec \\
         --model cnn_lstm \\
         --pretrain_parquet dataset/processed/AcTBeCalf/windowed_train.parquet \\
         --output_dir checkpoints/ts2vec/cnn_lstm \\

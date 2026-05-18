@@ -119,7 +119,7 @@ run_ts2vec_pretrain() {
     mkdir -p "${OUT}"
 
     echo ">>> TS2Vec pretraining ${MODEL} at $(date)" >&2
-    python "${REPO_ROOT}/scripts/pretrain_ts2vec.py" \
+    python -m hybrid_activity_recognition.pretrain_ts2vec \
         --model "$MODEL" \
         --pretrain_parquet "$PRETRAIN_PARQUET" \
         --output_dir "$OUT" \
