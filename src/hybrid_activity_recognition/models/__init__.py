@@ -22,7 +22,7 @@ from hybrid_activity_recognition.models.encoders import (
 from hybrid_activity_recognition.models.fusion import ConcatFusion
 from hybrid_activity_recognition.models.heads import LinearHead, MLPHead, PatchTSTHFClassificationHead
 from hybrid_activity_recognition.models.model import HybridModel
-from hybrid_activity_recognition.models.tsfel_branches import DeepMLPTsfelBranch, MLPTsfelBranch
+from hybrid_activity_recognition.models.tsfel_branches import MLPTsfelBranch
 
 _ENCODER_REGISTRY: dict[str, type] = {
     "cnn_lstm": CNNLSTMEncoder,
@@ -31,7 +31,6 @@ _ENCODER_REGISTRY: dict[str, type] = {
 
 _TSFEL_BRANCH_REGISTRY: dict[str, type] = {
     "mlp": MLPTsfelBranch,
-    "deep_mlp": DeepMLPTsfelBranch,
 }
 
 
@@ -65,8 +64,7 @@ def build_hybrid_model(
     head_dropout : float
         Dropout rate in the MLPHead.
     tsfel_branch_name : str
-        ``"mlp"`` (identity pass-through) | ``"deep_mlp"`` (3-layer MLP with BN+Dropout
-        matching the ``actbecalf-windowed`` notebook). Default ``"mlp"``.
+        ``"mlp"`` (identity pass-through). Default ``"mlp"``.
     tsfel_hidden_dim : int | None
         Hidden dimension of the TSFEL branch.  Defaults to ``encoder.output_dim``.
     tsfel_dropout : float
