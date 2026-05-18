@@ -103,6 +103,7 @@ def save_test_evaluation_artifacts(
         y_pred,
         labels=labels,
         display_labels=display_labels,
+        normalize="true",
         xticks_rotation=55,
         ax=ax_cm,
         cmap="Blues",
@@ -136,7 +137,7 @@ def save_test_evaluation_artifacts(
     fig.savefig(png_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
 
-    cm = confusion_matrix(y_true, y_pred, labels=labels)
+    cm = confusion_matrix(y_true, y_pred, labels=labels, normalize="true")
     return {
         "json_path": str(json_path),
         "png_path": str(png_path),

@@ -10,7 +10,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 
-from hybrid_activity_recognition.training.loss import balanced_class_weights, supervised_loss_fn
+from hybrid_activity_recognition.training.loss import balanced_class_weights
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +48,7 @@ class Trainer:
         use_class_weights: bool = True,
         scheduler_patience: int = 5,
         scheduler_factor: float = 0.3,
-        early_stopping_patience: int = 10,
+        early_stopping_patience: int = 25,
         grad_clip: float = 1.0,
         checkpoint_name: str = "best.pt",
         resume_from: str | Path | None = None,
@@ -75,7 +75,8 @@ class Trainer:
         cw = None
         if use_class_weights:
             cw = balanced_class_weights(labels, num_classes).to(self.device)
-        criterion = supervised_loss_fn(cw)
+        criterion = nn.CrossEntropyLoss(weight=cw) if cw is not None else nn.CrossEntropyLoss()
+        logger.info("class_weights=%s", cw is not None)
         optimizer = torch.optim.AdamW(_iter_trainable_params(self.model), lr=lr, weight_decay=weight_decay)
         scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode="min", patience=scheduler_patience, factor=scheduler_factor

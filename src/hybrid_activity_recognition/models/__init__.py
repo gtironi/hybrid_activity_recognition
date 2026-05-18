@@ -29,6 +29,10 @@ _ENCODER_REGISTRY: dict[str, type] = {
     "robust": RobustCNNLSTMEncoder,
 }
 
+_TSFEL_BRANCH_REGISTRY: dict[str, type] = {
+    "mlp": MLPTsfelBranch,
+}
+
 
 def build_hybrid_model(
     encoder_name: str,
@@ -38,6 +42,7 @@ def build_hybrid_model(
     head_name: str = "mlp",
     head_hidden_dim: int = 256,
     head_dropout: float = 0.4,
+    tsfel_branch_name: str = "mlp",
     tsfel_hidden_dim: int | None = None,
     tsfel_dropout: float = 0.3,
     **encoder_kwargs,
@@ -58,10 +63,12 @@ def build_hybrid_model(
         Hidden dimension of the MLPHead.
     head_dropout : float
         Dropout rate in the MLPHead.
+    tsfel_branch_name : str
+        ``"mlp"`` (identity pass-through). Default ``"mlp"``.
     tsfel_hidden_dim : int | None
-        Hidden dimension of the MLPTsfelBranch.  Defaults to ``encoder.output_dim``.
+        Hidden dimension of the TSFEL branch.  Defaults to ``encoder.output_dim``.
     tsfel_dropout : float
-        Dropout rate in the MLPTsfelBranch.
+        Dropout rate in the TSFEL branch.
     **encoder_kwargs
         Extra keyword arguments forwarded to the encoder constructor.
     """
@@ -82,17 +89,24 @@ def build_hybrid_model(
             f"Available: {sorted(list(_ENCODER_REGISTRY) + ['patchtst', 'tsfel_mlp'])}"
         )
 
+    if tsfel_branch_name not in _TSFEL_BRANCH_REGISTRY:
+        raise ValueError(
+            f"Unknown tsfel_branch_name: {tsfel_branch_name!r}. "
+            f"Available: {sorted(_TSFEL_BRANCH_REGISTRY)}"
+        )
+    TsfelBranchCls = _TSFEL_BRANCH_REGISTRY[tsfel_branch_name]
+
     # Build optional TSFEL branch + fusion
     tsfel_branch = None
     fusion = None
     if input_mode == "hybrid":
         tsfel_hidden = tsfel_hidden_dim if tsfel_hidden_dim is not None else encoder.output_dim
-        tsfel_branch = MLPTsfelBranch(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
+        tsfel_branch = TsfelBranchCls(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
         fusion = ConcatFusion(encoder.output_dim, tsfel_branch.output_dim)
         head_in_dim = fusion.output_dim
     elif input_mode == "tsfel_only":
         tsfel_hidden = tsfel_hidden_dim if tsfel_hidden_dim is not None else n_tsfel_feats
-        tsfel_branch = MLPTsfelBranch(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
+        tsfel_branch = TsfelBranchCls(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
         head_in_dim = tsfel_branch.output_dim
     elif input_mode == "deep_only":
         head_in_dim = encoder.output_dim

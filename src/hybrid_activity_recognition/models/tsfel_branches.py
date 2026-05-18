@@ -27,3 +27,4 @@ class MLPTsfelBranch(TsfelBranch):
 
     def forward(self, x_features: Tensor) -> Tensor:
         return x_features
+

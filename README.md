@@ -21,7 +21,7 @@ x_features (B, K)   →  [TsfelBranch]   ────┘
 - **`hybrid`**: Encoder + TSFEL → Fusion → Head (default)
 - **`tsfel_only`**: TSFEL branch → Head (signal ignored)
 
-**Three encoder families:**
+**Encoder families:**
 - `cnn_lstm`: 2 Conv1D blocks + 2-layer BiLSTM
 - `robust`: 3 Conv1D blocks + 1-layer BiLSTM (deeper CNN, Kaiming init)
 - `patchtst`: Transformer with patch-based tokenization (HuggingFace implementation)
@@ -60,7 +60,7 @@ Run this sequence end-to-end:
 source venv/bin/activate
 export PYTHONPATH=src
 
-# 1) Raw CSV -> train/test (80/20 subject-disjoint split: uses scripts/genSplit.py from original dataset paper)
+# 1) Raw CSV → train/test (subject-disjoint split via genSplit)
 python scripts/dataset_processing.py \
   --csv dataset/AcTBeCalf.csv \
   --out-dir dataset/processed \
@@ -69,7 +69,7 @@ python scripts/dataset_processing.py \
   --behavior-column behaviour \
   --test-fraction 0.2
 
-# 2) Window train (discover TSFEL top-K + save manifest)
+# 2) Window train (discover TSFEL top-K features + save manifest)
 python scripts/prepare_windowed_parquet.py \
   --input dataset/processed/AcTBeCalf/train.parquet \
   --output dataset/processed/AcTBeCalf/windowed_train.parquet \
@@ -139,10 +139,10 @@ python -m hybrid_activity_recognition.main \
   --device cuda
 ```
 
-**Example: PatchTST with pretraining**
+**Example: PatchTST with MAE pretraining**
 
 ```bash
-# 1. Pretrain (masked auto-encoding)
+# 1. MAE pretraining (masked auto-encoding, unlabeled signals)
 PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --mode pretrain \
   --pretrain_parquet dataset/processed/AcTBeCalf/windowed_train.parquet \
@@ -164,6 +164,34 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --device cuda
 ```
 
+**Example: CNN+LSTM (or Robust) with TS2Vec contrastive pretraining**
+
+Self-supervised pretraining for CNN+LSTM-family encoders. Produces a checkpoint loadable via `--init_encoder_from`. PatchTST is not supported here — use `--mode pretrain` (MAE) above instead.
+
+```bash
+# 1. TS2Vec contrastive pretraining (unlabeled signals)
+PYTHONPATH=src python -m hybrid_activity_recognition.main \
+  --mode pretrain_ts2vec \
+  --model cnn_lstm \
+  --pretrain_parquet dataset/processed/AcTBeCalf/windowed_train.parquet \
+  --output_dir experiments/ts2vec_cnn_lstm \
+  --pretrain_epochs 100 \
+  --device cuda
+
+# 2. Supervised run initialized from the TS2Vec encoder
+PYTHONPATH=src python -m hybrid_activity_recognition.main \
+  --mode supervised \
+  --model cnn_lstm \
+  --input_mode hybrid \
+  --init_encoder_from experiments/ts2vec_cnn_lstm/ts2vec_best.pt \
+  --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
+  --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
+  --output_dir experiments/cnn_lstm_hybrid_ts2vec \
+  --device cuda
+```
+
+Note: if you override `--hidden_lstm`, use the same value in both the pretrain and supervised run so encoder state_dict keys align.
+
 ### 3. Run Full Experimental Grid
 
 **Smoke test (2 epochs, validates everything works):**
@@ -172,7 +200,7 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
 bash scripts/experiments/smoke_test.sh
 ```
 
-**Full grid (50 epochs, all 8 experiments):**
+**Full grid (500 epochs, all experiments):**
 
 ```bash
 bash scripts/experiments/run_all.sh
@@ -208,24 +236,47 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main --help
 
 | Argument | Values | Description |
 |----------|--------|-------------|
-| `--mode` | `supervised`, `pretrain`, `finetune`, `test` | Training mode |
+| `--mode` | `supervised`, `pretrain`, `pretrain_ts2vec`, `finetune`, `test` | Training mode |
 | `--model` | `cnn_lstm`, `robust`, `patchtst`, `tsfel_mlp` | Encoder family |
 | `--input_mode` | `deep_only`, `hybrid`, `tsfel_only` | Architecture mode (default: `hybrid`) |
 | `--labeled_parquet_train` | path | Windowed training parquet |
 | `--labeled_parquet_test` | path | Windowed test parquet |
-| `--checkpoint` | path | Resume from this checkpoint (optional) |
-| `--patchtst_checkpoint` | path | Pretrained PatchTST encoder (required for `patchtst` model) |
-| `--pretrain_parquet` | path | Windowed parquet for MAE pretraining (mode=`pretrain`) |
+| `--pretrain_parquet` | path | Windowed parquet for pretraining (`pretrain` / `pretrain_ts2vec` modes) |
+| `--checkpoint` | path | Resume supervised/pretrain from this checkpoint |
+| `--patchtst_checkpoint` | path | Pretrained PatchTST MAE checkpoint to load into encoder |
+| `--init_encoder_from` | path | Load encoder weights from a TS2Vec checkpoint |
 | `--output_dir` | path | Output directory for checkpoints and logs |
-| `--epochs` | int | Training epochs (default: 50) |
+| `--epochs` | int | Max supervised/finetune epochs (default: 100) |
+| `--pretrain_epochs` | int | Pretraining epochs (default: 40) |
 | `--batch_size` | int | Batch size (default: 64) |
+| `--lr` | float | Learning rate (default: 1e-3 supervised, 1e-4 finetune) |
 | `--device` | `cuda`, `cpu` | Device (default: `cuda`) |
-| `--seed` | int | Random seed (default: 42) |
+| `--seed` | int | Random seed (default: 2026) |
+| `--freeze_encoder` | flag | Freeze signal encoder during supervised/finetune |
+| `--no_class_weights` | flag | Disable balanced class weights in CE loss |
 
 **PatchTST-specific:**
-- `--patchtst_d_model`, `--patchtst_num_layers`, `--patchtst_num_heads`
-- `--patchtst_patch_length`, `--patchtst_patch_stride`, `--patchtst_dropout`
-- `--pretrain_epochs`, `--pretrain_lr`, `--pretrain_mask_ratio`
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--context_length` | 75 | Window length T |
+| `--patch_len` | 12 | Patch length |
+| `--stride` | 12 | Patch stride |
+| `--n_layers` | 3 | Transformer layers |
+| `--n_heads` | 16 | Attention heads |
+| `--d_model` | 128 | Model dimension |
+| `--d_ff` | 512 | FFN dimension |
+| `--dropout` | 0.2 | Attention + FF dropout |
+| `--head_dropout` | 0.2 | Classification head dropout |
+| `--revin` | 1 | Reversible instance normalization (0/1) |
+| `--mask_ratio` | 0.75 | MAE masking ratio (`--mode pretrain`) |
+
+**TS2Vec-specific:**
+
+| Argument | Default | Description |
+|----------|---------|-------------|
+| `--temporal_unit` | 0 | Minimum pooling scale for temporal contrast |
+| `--hidden_lstm` | None | LSTM hidden size override (must match pretrain + supervised) |
 
 ---
 
@@ -284,7 +335,7 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
   --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
   --output_dir experiments/robust_run1 \
-  --epochs 50 --lr 1e-3 --device cuda
+  --epochs 200 --lr 1e-3 --device cuda
 ```
 
 **Pretrain + Fine-tune (PatchTST):**
@@ -297,16 +348,37 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --output_dir experiments/patchtst_pretrain \
   --pretrain_epochs 100 --pretrain_lr 1e-3 --device cuda
 
-# 2. Supervised fine-tuning
+# 2. Supervised
 PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --mode supervised \
-  --model patchtst \
-  --input_mode hybrid \
+  --model patchtst --input_mode hybrid \
   --patchtst_checkpoint experiments/patchtst_pretrain/best.pt \
   --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
   --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
   --output_dir experiments/patchtst_hybrid \
-  --epochs 50 --device cuda
+  --epochs 500 --device cuda
+```
+
+**TS2Vec Pretrain + Supervised (CNN+LSTM / Robust):**
+
+```bash
+# 1. Pretrain
+PYTHONPATH=src python -m hybrid_activity_recognition.main \
+  --mode pretrain_ts2vec \
+  --model cnn_lstm \
+  --pretrain_parquet dataset/processed/AcTBeCalf/windowed_train.parquet \
+  --output_dir experiments/ts2vec_cnn_lstm \
+  --pretrain_epochs 100 --device cuda
+
+# 2. Supervised
+PYTHONPATH=src python -m hybrid_activity_recognition.main \
+  --mode supervised \
+  --model cnn_lstm --input_mode hybrid \
+  --init_encoder_from experiments/ts2vec_cnn_lstm/ts2vec_best.pt \
+  --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
+  --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
+  --output_dir experiments/cnn_lstm_hybrid_ts2vec \
+  --epochs 500 --device cuda
 ```
 
 **Resume interrupted training:**
@@ -314,13 +386,12 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
 ```bash
 PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --mode supervised \
-  --model robust \
-  --input_mode hybrid \
+  --model robust --input_mode hybrid \
   --checkpoint experiments/robust_run1/checkpoint.pt \
   --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
   --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
   --output_dir experiments/robust_run1 \
-  --epochs 50 --device cuda
+  --epochs 200 --device cuda
 ```
 
 **Test only (evaluate a saved checkpoint):**
@@ -328,8 +399,7 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
 ```bash
 PYTHONPATH=src python -m hybrid_activity_recognition.main \
   --mode test \
-  --model robust \
-  --input_mode hybrid \
+  --model robust --input_mode hybrid \
   --checkpoint experiments/robust_run1/best.pt \
   --labeled_parquet_train dataset/processed/AcTBeCalf/windowed_train.parquet \
   --labeled_parquet_test dataset/processed/AcTBeCalf/windowed_test.parquet \
@@ -342,50 +412,45 @@ PYTHONPATH=src python -m hybrid_activity_recognition.main \
 
 ### Smoke Test (Quick Validation)
 
-Runs all 7 experiments for **2 epochs** with small batch size to verify everything connects:
+Runs all experiments for **2 epochs** with **10% training data** and batch size 16 — validates that imports, shapes, and I/O work end-to-end without any real training:
 
 ```bash
 bash scripts/experiments/smoke_test.sh
 ```
 
-**Expected output:** 7 directories in `experiments/` with `DONE` markers and `best.pt` checkpoints.
-
 ### Full Experimental Grid
-
-Runs all experiments with default hyperparameters (150 epochs, batch 256):
 
 ```bash
 bash scripts/experiments/run_all.sh
 ```
 
 **Execution order:**
-1. CNN+LSTM: `deep_only` + `hybrid`
-2. Robust CNN+LSTM: `deep_only` + `hybrid`
-3. PatchTST: pretrain → `deep_only` + `hybrid`
+1. CNN+LSTM: TS2Vec pretrain → `deep_only` + `hybrid` (fromscratch + frompretrain ep20/50/100)
+2. Robust CNN+LSTM: same as above
+3. PatchTST: fromscratch + MAE pretrain → `deep_only` + `hybrid` (multiple init variants)
 4. TSFEL-only baseline (Random Forest)
+5. TSFEL+MLP baseline
 
 **Individual model scripts:**
 - `bash scripts/experiments/run_cnn_lstm.sh`
 - `bash scripts/experiments/run_robust.sh`
 - `bash scripts/experiments/run_patchtst.sh`
 - `bash scripts/experiments/run_tsfel_baseline.sh`
+- `bash scripts/experiments/run_tsfel_mlp.sh`
 
-**Remote execution (SSH):**
+**PatchTST with raw unlabeled data (optional):**
+
+If you have `dataset/Time_Adj_Raw_Data.csv` (unlabeled), you can pretrain PatchTST on it before fine-tuning:
 
 ```bash
-# Using screen (recommended)
-screen -dmS experiments bash scripts/experiments/run_all.sh
-# Reconnect: screen -r experiments
-
-# Using nohup
-nohup bash scripts/experiments/run_all.sh > logs/run_all.log 2>&1 &
-disown
+# Pretrain on raw CSV + run patchtst_hybrid_frompretrain
+bash scripts/experiments/run_patchtst_raw_pipeline.sh
 ```
 
 **Resume behavior:**
 - If `checkpoint.pt` exists in the run directory, training automatically resumes from the last epoch.
-- If `DONE` marker exists, the experiment is skipped.
-- To restart from scratch: delete the run directory or remove the `DONE` file.
+- If `DONE` marker exists, the experiment is skipped entirely.
+- To restart from scratch: delete the run directory or remove `DONE`.
 
 ---
 
@@ -394,16 +459,14 @@ disown
 Each training run creates a directory named with key hyperparameters:
 
 ```
-experiments/{model}_{mode}_{dataset}_ep{epochs}_bs{batch}_lr{lr}_s{seed}/
+experiments/{model}_{mode}[_{suffix}]_{dataset}_ep{epochs}_bs{batch}_lr{lr}_s{seed}/
 ```
 
 **Files saved:**
 - `checkpoint.pt`: Full state (model, optimizer, scheduler, counters) for resume
-- `best.pt`: Best model by validation accuracy (model weights only)
-- `train.log`: Complete training log (dual output: console + file)
+- `best.pt`: Best model by validation accuracy (weights only)
+- `train.log`: Complete training log (console + file)
 - `DONE`: Marker indicating successful completion
-
-**Resume is explicit:** Pass `--checkpoint path/to/checkpoint.pt` to resume. Without it, training starts from scratch.
 
 ---
 
@@ -418,7 +481,7 @@ PYTHONPATH=src pytest tests/ -v
 **Coverage:**
 - `test_encoders.py`: Forward pass shape validation for all encoders
 - `test_fusion.py`: Fusion, TSFEL branch, and head dimension checks
-- `test_hybrid_model.py`: End-to-end forward + gradient flow for both modes
+- `test_hybrid_model.py`: End-to-end forward + gradient flow for all modes
 
 **Runtime:** <5 seconds, no GPU required, no real data needed.
 
@@ -433,7 +496,6 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
   --train dataset/processed/AcTBeCalf/windowed_train.parquet \
   --test dataset/processed/AcTBeCalf/windowed_test.parquet \
   --output_dir experiments/tsfel_baseline \
-  --k 50 \
   --n_estimators 200
 ```
 
@@ -445,7 +507,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 ### Adding a New Encoder
 
-1. Implement `SignalEncoder` in `src/hybrid_activity_recognition/models/encoders.py`:
+1. Implement `SignalEncoder` in [src/hybrid_activity_recognition/models/encoders.py](src/hybrid_activity_recognition/models/encoders.py):
    ```python
    class MyEncoder(SignalEncoder):
        @property
@@ -458,7 +520,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
            ...
    ```
 
-2. Register in `models/__init__.py`:
+2. Register in [src/hybrid_activity_recognition/models/__init__.py](src/hybrid_activity_recognition/models/__init__.py):
    ```python
    _ENCODER_REGISTRY["my_encoder"] = MyEncoder
    ```
@@ -467,6 +529,12 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
    ```bash
    --model my_encoder --input_mode hybrid
    ```
+
+### Adding a New Pretraining Method
+
+1. Implement the training loop in `src/hybrid_activity_recognition/training/`.
+2. Add a new `--mode pretrain_<name>` branch in [src/hybrid_activity_recognition/main.py](src/hybrid_activity_recognition/main.py).
+3. Add any method-specific flags to `parse_args()`.
 
 ### Adapting to a New Dataset
 
@@ -488,18 +556,18 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 
 ### TSFEL Branch
 
-- **`MLPTsfelBranch`**: Linear → BatchNorm → ReLU → Dropout
-- Projects variable-length TSFEL features to fixed `hidden_dim` (default: encoder's `output_dim`)
+- **`MLPTsfelBranch`**: Identity pass-through — returns the TSFEL feature vector unchanged. Output dim = input dim K.
 
 ### Fusion
 
 - **`ConcatFusion`**: Simple concatenation (`output_dim = enc_dim + tsfel_dim`)
 - Future work: Gated fusion, cross-attention
 
-### Classification Head
+### Classification Heads
 
-- **`MLPHead`**: Linear → ReLU → Dropout → Linear (default: 256 hidden)
-- **`LinearHead`**: Single linear layer (minimal parameters)
+- **`MLPHead`**: Linear → ReLU → Dropout → Linear (default hidden: 256), Kaiming init
+- **`LinearHead`**: Single linear layer
+- **`PatchTSTHFClassificationHead`**: HuggingFace head (requires `--model patchtst --input_mode deep_only`)
 
 ---
 
@@ -508,18 +576,13 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 **Per-epoch logging:**
 - Training loss, training accuracy
 - Validation loss, validation accuracy
-- Learning rate (after scheduler step)
 
 **Final test metrics:**
 - Accuracy
 - Macro F1
 - Weighted F1
 
-**Saved to:** `{output_dir}/train.log` and console.
-
-**Checkpoints:**
-- `best.pt`: Best validation accuracy (for final evaluation)
-- `checkpoint.pt`: Latest epoch (for resume)
+**Logs:** `{output_dir}/train.log` (console + file).
 
 ---
 
@@ -536,6 +599,7 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 ## References
 
 - **PatchTST:** Nie, Y. et al. (2023). "A Time Series is Worth 64 Words: Long-term Forecasting with Transformers." *ICLR 2023*.
+- **TS2Vec:** Yue, Z. et al. (2022). "TS2Vec: Towards Universal Representation of Time Series." *AAAI 2022*.
 - **TSFEL:** Barandas, M. et al. (2020). "TSFEL: Time Series Feature Extraction Library." *SoftwareX*, 11, 100456.
 
 ---
@@ -543,18 +607,15 @@ PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
 ## Troubleshooting
 
 **`FileNotFoundError: windowed_train.parquet`**
-→ Run `prepare_windowed_parquet.py` on `train.parquet` first (see Quick Start step 1b).
+→ Run `prepare_windowed_parquet.py` on `train.parquet` first (see Quick Start step 2).
 
 **`Manifest not found`**
 → Run the training set windowing with `--feature-manifest-out` before processing the test set.
 
-**`unrecognized arguments` with checkpoint paths**
-→ Ensure paths with spaces are quoted: `--checkpoint "path/with spaces/checkpoint.pt"`.
-
 **CUDA driver warnings**
-→ The code falls back to CPU automatically. To suppress warnings: `export DEVICE=cpu`.
+→ The code falls back to CPU automatically. To suppress: `export DEVICE=cpu`.
 
-**TSFEL `RuntimeWarning: catastrophic cancellation`**
+**`TSFEL RuntimeWarning: catastrophic cancellation`**
 → Expected for near-constant signal windows; does not affect results. Suppress with `PYTHONWARNINGS=ignore::RuntimeWarning`.
 
 ---

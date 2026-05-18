@@ -36,7 +36,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Hybrid Activity Recognition — experiments CLI")
 
     # --- Mode & model ---
-    p.add_argument("--mode", choices=("supervised", "pretrain", "finetune", "test"), required=True)
+    p.add_argument("--mode", choices=("supervised", "pretrain", "pretrain_ts2vec", "finetune", "test"), required=True)
     p.add_argument(
         "--model",
         type=str,
@@ -70,10 +70,12 @@ def parse_args():
     p.add_argument("--device", type=str, default="cuda", help="cuda or cpu")
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--num_workers", type=int, default=2)
-    p.add_argument("--epochs", type=int, default=1000)
+    p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--lr", type=float, default=None, help="Learning rate (if omitted, uses mode default)")
     p.add_argument("--hidden_lstm", type=int, default=None)
     p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
+    p.add_argument("--init_encoder_from", type=str, default="",
+                   help="Load only encoder weights from this checkpoint (e.g. TS2Vec pretrain). Skipped if empty.")
     p.add_argument(
         "--freeze_encoder",
         action="store_true",
@@ -109,10 +111,14 @@ def parse_args():
         help="Classification head: mlp | linear | patchtst_hf (requires --model patchtst --input_mode deep_only).",
     )
 
-    # --- Pretrain-specific ---
-    p.add_argument("--pretrain_epochs", type=int, default=100)
+    # --- Pretrain-specific (shared) ---
+    p.add_argument("--pretrain_epochs", type=int, default=40)
     p.add_argument("--pretrain_lr", type=float, default=1e-3)
-    p.add_argument("--mask_ratio", type=float, default=0.4, help="MAE masking ratio for PatchTST pretraining.")
+    # MAE (PatchTST)
+    p.add_argument("--mask_ratio", type=float, default=0.75, help="MAE masking ratio for PatchTST pretraining.")
+    # TS2Vec (CNN+LSTM / robust)
+    p.add_argument("--temporal_unit", type=int, default=0,
+                   help="TS2Vec: minimum pooling scale at which to apply temporal contrast.")
 
     return p.parse_args()
 
@@ -167,8 +173,12 @@ def main():
     out.mkdir(parents=True, exist_ok=True)
     setup_logging(out)
 
-    use_cuda = args.device.startswith("cuda") and torch.cuda.is_available()
-    device = torch.device("cuda" if use_cuda else "cpu")
+    if args.device.startswith("cuda") and torch.cuda.is_available():
+        device = torch.device("cuda")
+    elif torch.backends.mps.is_available():
+        device = torch.device("mps")
+    else:
+        device = torch.device("cpu")
     logger.info("device=%s", device)
 
     # ---- Pretrain mode ----
@@ -204,6 +214,39 @@ def main():
             resume_from=resume,
         )
         logger.info("Pretraining complete. Best checkpoint: %s", best_path)
+        return
+
+    # ---- Pretrain TS2Vec mode ----
+    if args.mode == "pretrain_ts2vec":
+        if not args.pretrain_parquet:
+            raise SystemExit("pretrain_ts2vec mode requires --pretrain_parquet")
+        if args.model not in ("cnn_lstm", "robust"):
+            raise SystemExit("pretrain_ts2vec only supports --model cnn_lstm or robust")
+
+        from hybrid_activity_recognition.data.pretrain_dataset import prepare_pretrain_dataloader
+        from hybrid_activity_recognition.models.encoders import CNNLSTMEncoder, RobustCNNLSTMEncoder
+        from hybrid_activity_recognition.training.ts2vec_pretrain import ts2vec_pretrain_encoder
+
+        train_dl, _, _ = prepare_pretrain_dataloader(
+            args.pretrain_parquet,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+        )
+        encoder_cls = CNNLSTMEncoder if args.model == "cnn_lstm" else RobustCNNLSTMEncoder
+        encoder = (
+            encoder_cls(hidden_lstm=args.hidden_lstm) if args.hidden_lstm is not None
+            else encoder_cls()
+        ).to(device)
+        ts2vec_pretrain_encoder(
+            encoder=encoder,
+            dataloader=train_dl,
+            device=device,
+            epochs=args.pretrain_epochs,
+            lr=args.pretrain_lr,
+            temporal_unit=args.temporal_unit,
+            output_dir=out,
+        )
+        logger.info("TS2Vec pretraining complete. Checkpoints in %s", out)
         return
 
     # ---- Test mode ----
@@ -246,6 +289,21 @@ def main():
         **encoder_kwargs,
     ).to(device)
     logger.info("model (%s/%s):\n%s", args.model, args.input_mode, model)
+
+    if args.init_encoder_from:
+        src = Path(args.init_encoder_from)
+        if not src.is_file():
+            raise SystemExit(f"--init_encoder_from: file not found: {src}")
+        state = torch.load(src, map_location=device, weights_only=True)
+        if isinstance(state, dict) and "model_state_dict" in state:
+            state = state["model_state_dict"]
+        enc_state = {k[len("encoder."):]: v for k, v in state.items() if k.startswith("encoder.")}
+        if not enc_state:
+            raise SystemExit(f"--init_encoder_from: no 'encoder.*' keys found in {src}")
+        miss, unex = model.encoder.load_state_dict(enc_state, strict=False)
+        logger.info("Loaded encoder from %s (loaded=%d, missing=%d, unexpected=%d)",
+                    src, len(enc_state), len(miss), len(unex))
+
     trainer = Trainer(model, device, out)
 
     if args.mode == "supervised":
