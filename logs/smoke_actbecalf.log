@@ -1,0 +1,119 @@
+=== AcTBeCalf SSL smoke test start: dom 17 mai 2026 16:29:01 -03 ===
+
+=== P0: Supervised baselines ===
+2026-05-17 16:29:02,971 INFO Run dir: pretrain_ablations/runs/smoke_sup_cnn
+2026-05-17 16:29:03,199 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:29:03,200 INFO Device: cuda
+2026-05-17 16:29:03,273 INFO Encoder params: 54,400
+2026-05-17 16:29:10,108 INFO Ep 001 | tr_loss=2.1953 tr_acc=0.439 | vl_loss=1.8967 vl_acc=0.392
+2026-05-17 16:29:15,950 INFO Ep 002 | tr_loss=2.0006 tr_acc=0.510 | vl_loss=1.8736 vl_acc=0.331
+2026-05-17 16:29:15,952 INFO Finetune best val_acc=0.392
+2026-05-17 16:29:17,335 INFO 
+Done. smoke_sup_cnn | dataset=actbecalf_windowed | encoder=cnn_tfc | method=supervised | finetune=full | seed=2026 | acc=0.5593 | macro_f1=0.3019
+2026-05-17 16:29:19,522 INFO Run dir: pretrain_ablations/runs/smoke_sup_resnet
+2026-05-17 16:29:19,746 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:29:19,746 INFO Device: cuda
+2026-05-17 16:29:19,806 INFO Encoder params: 15,392
+2026-05-17 16:29:27,110 INFO Ep 001 | tr_loss=2.1994 tr_acc=0.419 | vl_loss=1.9035 vl_acc=0.433
+2026-05-17 16:29:33,370 INFO Ep 002 | tr_loss=1.9518 tr_acc=0.508 | vl_loss=1.6982 vl_acc=0.464
+2026-05-17 16:29:33,374 INFO Finetune best val_acc=0.464
+2026-05-17 16:29:34,765 INFO 
+Done. smoke_sup_resnet | dataset=actbecalf_windowed | encoder=resnet1d | method=supervised | finetune=full | seed=2026 | acc=0.5747 | macro_f1=0.3250
+2026-05-17 16:29:36,918 INFO Run dir: pretrain_ablations/runs/smoke_sup_ptst
+2026-05-17 16:29:37,145 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:29:37,145 INFO Device: cuda
+2026-05-17 16:29:38,543 INFO Encoder params: 167,360
+2026-05-17 16:29:54,391 INFO Ep 001 | tr_loss=2.5476 tr_acc=0.395 | vl_loss=2.6273 vl_acc=0.244
+2026-05-17 16:30:09,186 INFO Ep 002 | tr_loss=2.4397 tr_acc=0.423 | vl_loss=2.3010 vl_acc=0.284
+2026-05-17 16:30:09,192 INFO Finetune best val_acc=0.284
+2026-05-17 16:30:12,234 INFO 
+Done. smoke_sup_ptst | dataset=actbecalf_windowed | encoder=patchtst | method=supervised | finetune=full | seed=2026 | acc=0.4501 | macro_f1=0.1466
+2026-05-17 16:30:14,515 INFO Run dir: pretrain_ablations/runs/smoke_sup_pmix
+2026-05-17 16:30:14,742 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:30:14,743 INFO Device: cuda
+2026-05-17 16:30:16,132 INFO Encoder params: 44,738
+2026-05-17 16:30:30,730 INFO Ep 001 | tr_loss=2.4246 tr_acc=0.453 | vl_loss=2.2478 vl_acc=0.320
+2026-05-17 16:30:43,781 INFO Ep 002 | tr_loss=2.2502 tr_acc=0.496 | vl_loss=1.9831 vl_acc=0.370
+2026-05-17 16:30:43,787 INFO Finetune best val_acc=0.370
+2026-05-17 16:30:46,620 INFO 
+Done. smoke_sup_pmix | dataset=actbecalf_windowed | encoder=patchtsmixer | method=supervised | finetune=full | seed=2026 | acc=0.5529 | macro_f1=0.2208
+
+=== P1: SSL methods ===
+2026-05-17 16:30:48,854 INFO Run dir: pretrain_ablations/runs/smoke_mae_ptst
+2026-05-17 16:30:49,079 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:30:49,079 INFO Device: cuda
+2026-05-17 16:30:50,483 INFO Encoder params: 167,360
+2026-05-17 16:31:04,567 INFO Pretrain Ep 001/2 loss=0.8265 knn=0.740 (chance=0.062)
+2026-05-17 16:31:19,117 INFO Pretrain Ep 002/2 loss=0.8062 knn=0.740 (chance=0.062)
+2026-05-17 16:31:19,927 INFO Post-pretrain t-SNE saved. best_knn=0.740
+2026-05-17 16:31:27,701 INFO Ep 001 | tr_loss=2.5625 tr_acc=0.343 | vl_loss=2.2552 vl_acc=0.299
+2026-05-17 16:31:35,130 INFO Ep 002 | tr_loss=2.4361 tr_acc=0.391 | vl_loss=2.2704 vl_acc=0.291
+2026-05-17 16:31:35,133 INFO Finetune best val_acc=0.299
+2026-05-17 16:31:38,095 INFO 
+Done. smoke_mae_ptst | dataset=actbecalf_windowed | encoder=patchtst | method=mae | finetune=freeze | seed=2026 | acc=0.4533 | macro_f1=0.1637
+2026-05-17 16:31:40,356 INFO Run dir: pretrain_ablations/runs/smoke_simclr_cnn
+2026-05-17 16:31:40,585 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:31:40,585 INFO Device: cuda
+2026-05-17 16:31:40,648 INFO Encoder params: 54,400
+2026-05-17 16:31:54,202 INFO Pretrain Ep 001/2 loss=1.2183 knn=0.950 (chance=0.062)
+2026-05-17 16:32:06,707 INFO Pretrain Ep 002/2 loss=1.0879 knn=0.950 (chance=0.062)
+2026-05-17 16:32:07,131 INFO Post-pretrain t-SNE saved. best_knn=0.950
+2026-05-17 16:32:11,806 INFO Ep 001 | tr_loss=2.2647 tr_acc=0.375 | vl_loss=2.1750 vl_acc=0.286
+2026-05-17 16:32:16,101 INFO Ep 002 | tr_loss=2.2026 tr_acc=0.394 | vl_loss=2.1176 vl_acc=0.230
+2026-05-17 16:32:16,103 INFO Finetune best val_acc=0.286
+2026-05-17 16:32:17,524 INFO 
+Done. smoke_simclr_cnn | dataset=actbecalf_windowed | encoder=cnn_tfc | method=simclr | finetune=freeze | seed=2026 | acc=0.4055 | macro_f1=0.1974
+2026-05-17 16:32:19,670 INFO Run dir: pretrain_ablations/runs/smoke_tfc_cnn
+2026-05-17 16:32:19,894 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:32:19,894 INFO Device: cuda
+2026-05-17 16:32:19,952 INFO Encoder params: 54,400
+/home/emap/tironi/hybrid_activity_recognition/venv/lib/python3.12/site-packages/torch/_compile.py:32: UserWarning: optimizer contains a parameter group with duplicate parameters; in future, this will cause an error; see github.com/pytorch/pytorch/issues/40967 for more information
+  return disable_fn(*args, **kwargs)
+2026-05-17 16:32:46,802 INFO Pretrain Ep 001/2 loss=2.7425 knn=0.960 (chance=0.062)
+2026-05-17 16:33:10,813 INFO Pretrain Ep 002/2 loss=2.2523 knn=0.980 (chance=0.062)
+2026-05-17 16:33:11,241 INFO Post-pretrain t-SNE saved. best_knn=0.980
+2026-05-17 16:33:15,923 INFO Ep 001 | tr_loss=2.0574 tr_acc=0.512 | vl_loss=1.7306 vl_acc=0.456
+2026-05-17 16:33:20,314 INFO Ep 002 | tr_loss=1.9314 tr_acc=0.541 | vl_loss=1.7077 vl_acc=0.419
+2026-05-17 16:33:20,316 INFO Finetune best val_acc=0.456
+2026-05-17 16:33:21,727 INFO 
+Done. smoke_tfc_cnn | dataset=actbecalf_windowed | encoder=cnn_tfc | method=tfc | finetune=freeze | seed=2026 | acc=0.5853 | macro_f1=0.2840
+2026-05-17 16:33:23,882 INFO Run dir: pretrain_ablations/runs/smoke_tstcc_cnn
+2026-05-17 16:33:24,104 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:33:24,104 INFO Device: cuda
+2026-05-17 16:33:24,169 INFO Encoder params: 54,400
+2026-05-17 16:33:38,751 INFO Pretrain Ep 001/2 loss=1.2759 knn=0.920 (chance=0.062)
+2026-05-17 16:33:52,021 INFO Pretrain Ep 002/2 loss=1.1483 knn=0.940 (chance=0.062)
+2026-05-17 16:33:52,443 INFO Post-pretrain t-SNE saved. best_knn=0.940
+2026-05-17 16:33:58,786 INFO Ep 001 | tr_loss=2.2093 tr_acc=0.415 | vl_loss=2.0019 vl_acc=0.391
+2026-05-17 16:34:04,816 INFO Ep 002 | tr_loss=2.0266 tr_acc=0.488 | vl_loss=1.9461 vl_acc=0.336
+2026-05-17 16:34:04,818 INFO Finetune best val_acc=0.391
+2026-05-17 16:34:06,250 INFO 
+Done. smoke_tstcc_cnn | dataset=actbecalf_windowed | encoder=cnn_tfc | method=tstcc | finetune=full | seed=2026 | acc=0.4414 | macro_f1=0.2322
+
+=== P2: Frozen variants ===
+2026-05-17 16:34:08,396 INFO Run dir: pretrain_ablations/runs/smoke_tstcc_cnn_freeze
+2026-05-17 16:34:08,621 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:34:08,621 INFO Device: cuda
+2026-05-17 16:34:08,698 INFO Encoder params: 54,400
+2026-05-17 16:34:23,080 INFO Pretrain Ep 001/2 loss=1.2759 knn=0.920 (chance=0.062)
+2026-05-17 16:34:36,877 INFO Pretrain Ep 002/2 loss=1.1483 knn=0.940 (chance=0.062)
+2026-05-17 16:34:37,307 INFO Post-pretrain t-SNE saved. best_knn=0.940
+2026-05-17 16:34:41,926 INFO Ep 001 | tr_loss=2.2694 tr_acc=0.383 | vl_loss=2.3022 vl_acc=0.227
+2026-05-17 16:34:46,177 INFO Ep 002 | tr_loss=2.2005 tr_acc=0.396 | vl_loss=2.1947 vl_acc=0.238
+2026-05-17 16:34:46,181 INFO Finetune best val_acc=0.238
+2026-05-17 16:34:47,578 INFO 
+Done. smoke_tstcc_cnn_freeze | dataset=actbecalf_windowed | encoder=cnn_tfc | method=tstcc | finetune=freeze | seed=2026 | acc=0.3602 | macro_f1=0.1961
+2026-05-17 16:34:49,734 INFO Run dir: pretrain_ablations/runs/smoke_simclr_cnn_full
+2026-05-17 16:34:49,955 INFO Data: actbecalf_windowed | num_classes=16 C_in=3 T=75
+2026-05-17 16:34:49,955 INFO Device: cuda
+2026-05-17 16:34:50,019 INFO Encoder params: 54,400
+2026-05-17 16:35:04,093 INFO Pretrain Ep 001/2 loss=1.2183 knn=0.950 (chance=0.062)
+2026-05-17 16:35:16,447 INFO Pretrain Ep 002/2 loss=1.0879 knn=0.950 (chance=0.062)
+2026-05-17 16:35:16,870 INFO Post-pretrain t-SNE saved. best_knn=0.950
+2026-05-17 16:35:23,250 INFO Ep 001 | tr_loss=2.1967 tr_acc=0.417 | vl_loss=1.9840 vl_acc=0.386
+2026-05-17 16:35:29,296 INFO Ep 002 | tr_loss=2.0247 tr_acc=0.491 | vl_loss=1.8130 vl_acc=0.406
+2026-05-17 16:35:29,299 INFO Finetune best val_acc=0.406
+2026-05-17 16:35:30,597 INFO 
+Done. smoke_simclr_cnn_full | dataset=actbecalf_windowed | encoder=cnn_tfc | method=simclr | finetune=full | seed=2026 | acc=0.6008 | macro_f1=0.3240
+
+=== AcTBeCalf SSL smoke test done: dom 17 mai 2026 16:35:31 -03 ===
