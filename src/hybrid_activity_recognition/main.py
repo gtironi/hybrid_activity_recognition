@@ -74,15 +74,8 @@ def parse_args():
     p.add_argument("--lr", type=float, default=None, help="Learning rate (if omitted, uses mode default)")
     p.add_argument("--hidden_lstm", type=int, default=None)
     p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
-    p.add_argument("--loss_type", choices=("ce", "focal"), default="ce", help="Supervised loss function.")
-    p.add_argument("--focal_gamma", type=float, default=2.0, help="Gamma for focal loss (only if --loss_type=focal).")
-    p.add_argument("--balanced_sampler", action="store_true", help="Use WeightedRandomSampler (inverse class freq) for train loader.")
-    p.add_argument("--tsfel_dropout_p", type=float, default=0.0,
-                   help="Probability of zeroing the TSFEL feature vector during training (forces encoder to carry signal). 0.0 disables.")
-    p.add_argument("--tsfel_dropout_warmup_epochs", type=int, default=0,
-                   help="During the first N epochs, force TSFEL dropout p=1.0 (curriculum: encoder-only warmup). After N, reverts to --tsfel_dropout_p.")
     p.add_argument("--init_encoder_from", type=str, default="",
-                   help="Load only the encoder submodule weights from this checkpoint (deep_only -> hybrid warmup). Skipped if empty.")
+                   help="Load only encoder weights from this checkpoint (e.g. TS2Vec pretrain). Skipped if empty.")
     p.add_argument(
         "--freeze_encoder",
         action="store_true",
@@ -164,7 +157,6 @@ def _prepare_labeled_loaders(args):
         random_state=args.seed,
         val_fraction=args.val_fraction,
         parquet_val_path=val_path,
-        balanced_sampler=getattr(args, "balanced_sampler", False),
     )
 
 
@@ -289,10 +281,6 @@ def main():
             use_class_weights=not args.no_class_weights,
             resume_from=resume,
             freeze_encoder=args.freeze_encoder,
-            loss_type=args.loss_type,
-            focal_gamma=args.focal_gamma,
-            tsfel_dropout_p=args.tsfel_dropout_p,
-            tsfel_dropout_warmup_epochs=args.tsfel_dropout_warmup_epochs,
         )
         res = trainer.evaluate(test_dl, out / "best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
