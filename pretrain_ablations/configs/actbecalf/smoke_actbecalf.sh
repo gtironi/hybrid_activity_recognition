@@ -7,6 +7,7 @@
 set -euo pipefail
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 cd "$REPO"
+export PYTHONPATH="${REPO}/pretrain_ablations/src:${PYTHONPATH:-}"
 
 PY="python -m pretrain_ablations.experiment"
 BASE="--config pretrain_ablations/configs/actbecalf/actbecalf_smoke.yaml"
@@ -14,7 +15,7 @@ BASE="--config pretrain_ablations/configs/actbecalf/actbecalf_smoke.yaml"
 # Ensure data is exported.
 if [ ! -f "pretrain_ablations/processed/actbecalf_windowed/train.pt" ]; then
     echo ">>> Exporting AcTBeCalf data..."
-    python -m pretrain_ablations.preprocess.export_actbecalf
+    python pretrain_ablations/preprocess/export_actbecalf.py
 fi
 
 echo "=== AcTBeCalf SSL smoke test start: $(date) ==="

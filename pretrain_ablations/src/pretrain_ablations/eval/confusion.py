@@ -14,11 +14,11 @@ def save_confusion_matrix(y_true: np.ndarray, y_pred: np.ndarray,
                            class_names: list[str], out_dir: Path) -> None:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    cm = confusion_matrix(y_true, y_pred)
+    n = len(class_names)
+    cm = confusion_matrix(y_true, y_pred, labels=list(range(n)))
     np.save(out_dir / "confusion_matrix_raw.npy", cm)
 
     cm_norm = cm.astype(float) / (cm.sum(axis=1, keepdims=True) + 1e-8)
-    n = len(class_names)
     fig, ax = plt.subplots(figsize=(max(6, n * 0.5), max(5, n * 0.5)))
     im = ax.imshow(cm_norm, vmin=0, vmax=1, cmap="Blues")
     ax.set_xticks(range(n)); ax.set_xticklabels(class_names, rotation=45, ha="right", fontsize=7)

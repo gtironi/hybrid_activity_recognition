@@ -71,6 +71,7 @@ class MAEMethod(PretextMethod):
 
     def pretrain_step(self, encoder: nn.Module, batch: tuple) -> dict:
         x, _, _ = batch                    # (B, C_in, T)
+        self._model = self._model.to(x.device)
         out = self._model(past_values=x.permute(0, 2, 1))   # HF expects (B, T, C)
         return {"loss": out.loss}
 
