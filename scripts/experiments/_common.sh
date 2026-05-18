@@ -119,13 +119,14 @@ run_ts2vec_pretrain() {
     mkdir -p "${OUT}"
 
     echo ">>> TS2Vec pretraining ${MODEL} at $(date)" >&2
-    python -m hybrid_activity_recognition.pretrain_ts2vec \
+    python -m hybrid_activity_recognition.main \
+        --mode pretrain_ts2vec \
         --model "$MODEL" \
         --pretrain_parquet "$PRETRAIN_PARQUET" \
         --output_dir "$OUT" \
-        --epochs "$PRETRAIN_EPOCHS" \
+        --pretrain_epochs "$PRETRAIN_EPOCHS" \
         --batch_size "${BATCH_SIZE_LARGE}" \
-        --lr "$PRETRAIN_LR" \
+        --pretrain_lr "$PRETRAIN_LR" \
         --seed "$SEED" \
         --device "$DEVICE" \
         2>&1 | tee -a "${OUT}/pretrain.log" >&2

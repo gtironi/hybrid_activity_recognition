@@ -36,7 +36,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="Hybrid Activity Recognition — experiments CLI")
 
     # --- Mode & model ---
-    p.add_argument("--mode", choices=("supervised", "pretrain", "finetune", "test"), required=True)
+    p.add_argument("--mode", choices=("supervised", "pretrain", "pretrain_ts2vec", "finetune", "test"), required=True)
     p.add_argument(
         "--model",
         type=str,
@@ -111,10 +111,14 @@ def parse_args():
         help="Classification head: mlp | linear | patchtst_hf (requires --model patchtst --input_mode deep_only).",
     )
 
-    # --- Pretrain-specific ---
+    # --- Pretrain-specific (shared) ---
     p.add_argument("--pretrain_epochs", type=int, default=100)
     p.add_argument("--pretrain_lr", type=float, default=1e-3)
+    # MAE (PatchTST)
     p.add_argument("--mask_ratio", type=float, default=0.75, help="MAE masking ratio for PatchTST pretraining.")
+    # TS2Vec (CNN+LSTM / robust)
+    p.add_argument("--temporal_unit", type=int, default=0,
+                   help="TS2Vec: minimum pooling scale at which to apply temporal contrast.")
 
     return p.parse_args()
 
@@ -210,6 +214,39 @@ def main():
             resume_from=resume,
         )
         logger.info("Pretraining complete. Best checkpoint: %s", best_path)
+        return
+
+    # ---- Pretrain TS2Vec mode ----
+    if args.mode == "pretrain_ts2vec":
+        if not args.pretrain_parquet:
+            raise SystemExit("pretrain_ts2vec mode requires --pretrain_parquet")
+        if args.model not in ("cnn_lstm", "robust"):
+            raise SystemExit("pretrain_ts2vec only supports --model cnn_lstm or robust")
+
+        from hybrid_activity_recognition.data.pretrain_dataset import prepare_pretrain_dataloader
+        from hybrid_activity_recognition.models.encoders import CNNLSTMEncoder, RobustCNNLSTMEncoder
+        from hybrid_activity_recognition.training.ts2vec_pretrain import ts2vec_pretrain_encoder
+
+        train_dl, _, _ = prepare_pretrain_dataloader(
+            args.pretrain_parquet,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+        )
+        encoder_cls = CNNLSTMEncoder if args.model == "cnn_lstm" else RobustCNNLSTMEncoder
+        encoder = (
+            encoder_cls(hidden_lstm=args.hidden_lstm) if args.hidden_lstm is not None
+            else encoder_cls()
+        ).to(device)
+        ts2vec_pretrain_encoder(
+            encoder=encoder,
+            dataloader=train_dl,
+            device=device,
+            epochs=args.pretrain_epochs,
+            lr=args.pretrain_lr,
+            temporal_unit=args.temporal_unit,
+            output_dir=out,
+        )
+        logger.info("TS2Vec pretraining complete. Checkpoints in %s", out)
         return
 
     # ---- Test mode ----
