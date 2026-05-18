@@ -70,7 +70,7 @@ def parse_args():
     p.add_argument("--device", type=str, default="cuda", help="cuda or cpu")
     p.add_argument("--batch_size", type=int, default=64)
     p.add_argument("--num_workers", type=int, default=2)
-    p.add_argument("--epochs", type=int, default=1000)
+    p.add_argument("--epochs", type=int, default=100)
     p.add_argument("--lr", type=float, default=None, help="Learning rate (if omitted, uses mode default)")
     p.add_argument("--hidden_lstm", type=int, default=None)
     p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
@@ -112,7 +112,7 @@ def parse_args():
     )
 
     # --- Pretrain-specific (shared) ---
-    p.add_argument("--pretrain_epochs", type=int, default=100)
+    p.add_argument("--pretrain_epochs", type=int, default=40)
     p.add_argument("--pretrain_lr", type=float, default=1e-3)
     # MAE (PatchTST)
     p.add_argument("--mask_ratio", type=float, default=0.75, help="MAE masking ratio for PatchTST pretraining.")
