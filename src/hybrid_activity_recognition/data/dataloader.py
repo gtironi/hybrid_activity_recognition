@@ -15,6 +15,8 @@ if str(_SCRIPTS_DIR) not in sys.path:
 
 import genSplit
 
+from hybrid_activity_recognition.data.augmentations import SignalAugmentation
+
 # Colunas meta comuns entre pipelines (window_creator_* e notebook)
 _STANDARD_COLS = frozenset(
     {"dateTime", "calfId", "calf_id", "segId", "acc_x", "acc_y", "acc_z", "label"}
@@ -22,16 +24,42 @@ _STANDARD_COLS = frozenset(
 
 
 class CalfHybridDataset(Dataset):
-    def __init__(self, signals: np.ndarray, features: np.ndarray, labels: np.ndarray):
+    def __init__(
+        self,
+        signals: np.ndarray,
+        features: np.ndarray,
+        labels: np.ndarray,
+        *,
+        subject_indices: np.ndarray | None = None,
+        augment: bool = False,
+        augmentation: SignalAugmentation | None = None,
+    ):
         self.signals = torch.as_tensor(signals, dtype=torch.float32)
         self.features = torch.as_tensor(features, dtype=torch.float32)
         self.labels = torch.as_tensor(labels, dtype=torch.long)
+        self.subject_indices = (
+            torch.as_tensor(subject_indices, dtype=torch.long)
+            if subject_indices is not None
+            else None
+        )
+        self.augment = augment
+        self.augmentation = augmentation if augmentation is not None else SignalAugmentation()
 
     def __len__(self):
         return len(self.labels)
 
     def __getitem__(self, idx):
-        return self.signals[idx], self.features[idx], self.labels[idx]
+        sig = self.signals[idx]
+        if self.augment:
+            sig = self.augmentation(sig)
+        if self.subject_indices is not None:
+            return sig, self.features[idx], self.labels[idx], self.subject_indices[idx]
+        return sig, self.features[idx], self.labels[idx]
+
+
+def _encode_subject_indices(df: pd.DataFrame, subject_le: LabelEncoder) -> np.ndarray:
+    col = _subject_column(df)
+    return subject_le.transform(df[col].astype(str)).astype(np.int64)
 
 
 def _feature_columns(df: pd.DataFrame) -> list[str]:
@@ -101,6 +129,85 @@ def _stack_signals(df: pd.DataFrame) -> np.ndarray:
     return np.stack([x_stack, y_stack, z_stack], axis=1).astype(np.float32)
 
 
+def _subject_column(df: pd.DataFrame) -> str:
+    if "calf_id" in df.columns:
+        return "calf_id"
+    if "calfId" in df.columns:
+        return "calfId"
+    raise ValueError("Coluna de sujeito ausente: esperado 'calf_id' ou 'calfId'.")
+
+
+def _signal_stats_over_windows(signals: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Per-channel mean/std over windows and time: shape (1, C, 1)."""
+    mean = np.mean(signals, axis=(0, 2), keepdims=True).astype(np.float32)
+    std = np.std(signals, axis=(0, 2), keepdims=True).astype(np.float32)
+    return mean, std
+
+
+def _build_subject_signal_stats(
+    df: pd.DataFrame, signals: np.ndarray
+) -> dict[object, tuple[np.ndarray, np.ndarray, int]]:
+    """Per-subject (mean, std, n_windows) from a single dataframe slice."""
+    col = _subject_column(df)
+    stats: dict[object, tuple[np.ndarray, np.ndarray, int]] = {}
+    for sid in df[col].unique():
+        mask = (df[col].values == sid)
+        n = int(mask.sum())
+        if n == 0:
+            continue
+        mu, sigma = _signal_stats_over_windows(signals[mask])
+        stats[sid] = (mu, sigma, n)
+    return stats
+
+
+def _shrink_subject_stats(
+    local_mu: np.ndarray,
+    local_std: np.ndarray,
+    n_windows: int,
+    global_mu: np.ndarray,
+    global_std: np.ndarray,
+    tau: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Empirical-Bayes blend: more weight on global when n is small."""
+    w = float(n_windows) / (float(n_windows) + float(tau))
+    mu = w * local_mu + (1.0 - w) * global_mu
+    std = w * local_std + (1.0 - w) * global_std
+    return mu, std
+
+
+def _normalize_signals(
+    signals: np.ndarray,
+    df: pd.DataFrame,
+    *,
+    global_mean: np.ndarray,
+    global_std: np.ndarray,
+    train_subject_stats: dict[object, tuple[np.ndarray, np.ndarray, int]] | None,
+    pool_subject_stats: dict[object, tuple[np.ndarray, np.ndarray, int]] | None,
+    shrinkage_tau: float,
+    use_shrinkage: bool,
+) -> np.ndarray:
+    """Z-score windows per subject; optional shrinkage toward train-global stats."""
+    col = _subject_column(df)
+    out = np.empty_like(signals)
+    for sid in df[col].unique():
+        mask = df[col].values == sid
+        idx = np.where(mask)[0]
+        if not use_shrinkage and train_subject_stats is not None and sid in train_subject_stats:
+            mu, std, _ = train_subject_stats[sid]
+        elif pool_subject_stats is not None and sid in pool_subject_stats:
+            mu_l, std_l, n = pool_subject_stats[sid]
+            if use_shrinkage:
+                mu, std = _shrink_subject_stats(
+                    mu_l, std_l, n, global_mean, global_std, shrinkage_tau
+                )
+            else:
+                mu, std = mu_l, std_l
+        else:
+            mu, std = global_mean, global_std
+        out[idx] = (signals[idx] - mu) / (std + 1e-6)
+    return out
+
+
 def _align_tsfel_columns(df: pd.DataFrame, feat_cols: list[str]) -> pd.DataFrame:
     """Garante as mesmas colunas TSFEL que no treino (ausentes → 0)."""
     out = df.copy()
@@ -118,7 +225,20 @@ def prepare_train_val_test_loaders(
     random_state: int = 42,
     val_fraction: float = 0.2,
     parquet_val_path: str | None = None,
-) -> tuple[DataLoader, DataLoader, DataLoader, np.ndarray, int, int, LabelEncoder]:
+    signal_norm: str = "global",
+    norm_shrinkage_tau: float = 50.0,
+    apply_augmentation: bool = False,
+) -> tuple[
+    DataLoader,
+    DataLoader,
+    DataLoader,
+    np.ndarray,
+    int,
+    int,
+    LabelEncoder,
+    int,
+    LabelEncoder,
+]:
     """
     Treino e teste em Parquets distintos (ex.: por sujeito). Ajusta média/desvio do sinal e
     StandardScaler das features TSFEL apenas nas janelas de treino (após split val).
@@ -135,13 +255,14 @@ def prepare_train_val_test_loaders(
     df_train = _align_tsfel_columns(df_train, feat_cols)
     df_test = _align_tsfel_columns(df_test, feat_cols)
 
+    subject_col = _subject_column(df_train)
+
     if parquet_val_path:
         df_val = pd.read_parquet(parquet_val_path)
         df_val["label"] = df_val["label"].astype(str)
         df_val = _align_tsfel_columns(df_val, feat_cols)
         df_tr = df_train.reset_index(drop=True)
     else:
-        subject_col = "calf_id" if "calf_id" in df_train.columns else "calfId"
         df_tr, df_val = _split_train_val_by_subject_gen_split(
             df_train,
             subject_column=subject_col,
@@ -185,15 +306,53 @@ def prepare_train_val_test_loaders(
     y_val = le.transform(df_val["label"])
     y_te = le.transform(df_test["label"])
 
-    mean_signal = np.mean(signals_tr, axis=(0, 2), keepdims=True)
-    std_signal = np.std(signals_tr, axis=(0, 2), keepdims=True)
+    if signal_norm not in ("global", "subject"):
+        raise ValueError(f"signal_norm must be 'global' or 'subject', got {signal_norm!r}")
 
-    def _norm_sig(s: np.ndarray) -> np.ndarray:
-        return (s - mean_signal) / (std_signal + 1e-6)
+    global_mean, global_std = _signal_stats_over_windows(signals_tr)
 
-    signals_tr_n = _norm_sig(signals_tr)
-    signals_val_n = _norm_sig(signals_val)
-    signals_te_n = _norm_sig(signals_te)
+    if signal_norm == "global":
+
+        def _norm_global(s: np.ndarray) -> np.ndarray:
+            return (s - global_mean) / (global_std + 1e-6)
+
+        signals_tr_n = _norm_global(signals_tr)
+        signals_val_n = _norm_global(signals_val)
+        signals_te_n = _norm_global(signals_te)
+    else:
+        train_subject_stats = _build_subject_signal_stats(df_tr, signals_tr)
+        val_pool_stats = _build_subject_signal_stats(df_val, signals_val)
+        test_pool_stats = _build_subject_signal_stats(df_test, signals_te)
+        signals_tr_n = _normalize_signals(
+            signals_tr,
+            df_tr,
+            global_mean=global_mean,
+            global_std=global_std,
+            train_subject_stats=train_subject_stats,
+            pool_subject_stats=None,
+            shrinkage_tau=norm_shrinkage_tau,
+            use_shrinkage=False,
+        )
+        signals_val_n = _normalize_signals(
+            signals_val,
+            df_val,
+            global_mean=global_mean,
+            global_std=global_std,
+            train_subject_stats=train_subject_stats,
+            pool_subject_stats=val_pool_stats,
+            shrinkage_tau=norm_shrinkage_tau,
+            use_shrinkage=True,
+        )
+        signals_te_n = _normalize_signals(
+            signals_te,
+            df_test,
+            global_mean=global_mean,
+            global_std=global_std,
+            train_subject_stats=None,
+            pool_subject_stats=test_pool_stats,
+            shrinkage_tau=norm_shrinkage_tau,
+            use_shrinkage=True,
+        )
 
     scaler = StandardScaler()
     scaler.fit(features_tr)
@@ -201,12 +360,23 @@ def prepare_train_val_test_loaders(
     features_val_n = scaler.transform(features_val)
     features_te_n = scaler.transform(features_te)
 
+    subject_le = LabelEncoder()
+    subject_le.fit(df_tr[subject_col].astype(str))
+    s_tr = _encode_subject_indices(df_tr, subject_le)
+    num_subjects_train = len(subject_le.classes_)
+
     class_names = le.classes_
     num_classes = len(class_names)
     n_feats = len(feat_cols)
 
     pin_memory = torch.cuda.is_available()
-    train_ds = CalfHybridDataset(signals_tr_n, features_tr_n, y_tr)
+    train_ds = CalfHybridDataset(
+        signals_tr_n,
+        features_tr_n,
+        y_tr,
+        subject_indices=s_tr,
+        augment=apply_augmentation,
+    )
     train_dl = DataLoader(
         train_ds,
         batch_size=batch_size,
@@ -229,4 +399,4 @@ def prepare_train_val_test_loaders(
         pin_memory=pin_memory,
     )
 
-    return train_dl, val_dl, test_dl, class_names, num_classes, n_feats, le
+    return train_dl, val_dl, test_dl, class_names, num_classes, n_feats, le, num_subjects_train, subject_le

@@ -14,5 +14,5 @@ dataset/*.parquet
 experiments/*/
 data/*
 dataset/*
-
+old_results/*
 

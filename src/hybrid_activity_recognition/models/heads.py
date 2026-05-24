@@ -71,3 +71,25 @@ class PatchTSTHFClassificationHead(ClassificationHead):
 
     def forward(self, z: Tensor) -> Tensor:
         return self._head(z)
+
+
+class SubjectDiscriminator(nn.Module):
+    """Predicts train-set subject ID from encoder embeddings (adversarial branch)."""
+
+    def __init__(
+        self,
+        in_dim: int,
+        num_subjects: int,
+        hidden_dim: int = 128,
+        dropout: float = 0.3,
+    ):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, num_subjects),
+        )
+
+    def forward(self, z: Tensor) -> Tensor:
+        return self.net(z)

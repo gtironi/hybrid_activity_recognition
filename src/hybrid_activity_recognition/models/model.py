@@ -5,8 +5,7 @@ Supports three modes:
 - ``hybrid``:     encoder + TSFEL branch → fusion → head
 - ``tsfel_only``: TSFEL branch → head (signal encoder ignored)
 
-The forward signature ``(x_signal, x_features) → logits`` is identical in both
-modes so the Trainer does not need to know which mode is active.
+Optional subject-adversarial branch: encoder embedding → GRL → SubjectDiscriminator.
 """
 
 from __future__ import annotations
@@ -22,6 +21,7 @@ from hybrid_activity_recognition.models.base import (
     SignalEncoder,
     TsfelBranch,
 )
+from hybrid_activity_recognition.models.grl import GradientReversal
 
 
 class HybridModel(nn.Module):
@@ -34,6 +34,7 @@ class HybridModel(nn.Module):
         fusion: FusionModule | None,
         head: ClassificationHead,
         input_mode: Literal["deep_only", "hybrid", "tsfel_only"] = "hybrid",
+        subject_discriminator: nn.Module | None = None,
     ):
         super().__init__()
         self.input_mode = input_mode
@@ -41,21 +42,41 @@ class HybridModel(nn.Module):
         self.tsfel_branch = tsfel_branch
         self.fusion = fusion
         self.head = head
+        self.subject_discriminator = subject_discriminator
+        self.grl = GradientReversal()
 
-    def forward(self, x_signal: Tensor, x_features: Tensor) -> Tensor:
+    def forward(
+        self,
+        x_signal: Tensor,
+        x_features: Tensor,
+        *,
+        compute_adversarial: bool = False,
+        grl_alpha: float = 1.0,
+    ) -> Tensor | tuple[Tensor, Tensor]:
         if self.input_mode == "tsfel_only":
-            z_ts = self.tsfel_branch(x_features)
-            return self.head(z_ts)
+            behaviour_logits = self.head(self.tsfel_branch(x_features))
+            if compute_adversarial:
+                raise ValueError("Subject adversarial alignment requires a signal encoder.")
+            return behaviour_logits
 
-        # Some heads (HF PatchTSTClassificationHead) expect 4D hidden states.
-        if getattr(self.head, "needs_patchtst_hidden", False):
-            z_sig = self.encoder.forward_hidden(x_signal)
-        else:
-            z_sig = self.encoder(x_signal)
+        z_sig = self.encoder(x_signal)
 
         if self.input_mode == "deep_only":
-            return self.head(z_sig)
+            if getattr(self.head, "needs_patchtst_hidden", False):
+                z_head_in = self.encoder.forward_hidden(x_signal)
+            else:
+                z_head_in = z_sig
+            behaviour_logits = self.head(z_head_in)
+        else:
+            z_ts = self.tsfel_branch(x_features)
+            z_fused = self.fusion(z_sig, z_ts)
+            behaviour_logits = self.head(z_fused)
 
-        z_ts = self.tsfel_branch(x_features)
-        z_fused = self.fusion(z_sig, z_ts)
-        return self.head(z_fused)
+        if compute_adversarial:
+            if self.subject_discriminator is None:
+                raise ValueError("compute_adversarial=True but subject_discriminator is None.")
+            z_rev = self.grl(z_sig, grl_alpha)
+            subject_logits = self.subject_discriminator(z_rev)
+            return behaviour_logits, subject_logits
+
+        return behaviour_logits

@@ -12,6 +12,47 @@ from torch import Tensor
 from hybrid_activity_recognition.models.base import SignalEncoder
 
 
+class TemporalAttentionPooling(nn.Module):
+    """Attention pooling over LSTM time steps. Input (B, T, D) -> (B, D)."""
+
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.query = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        self.proj = nn.Linear(d_model, d_model)
+
+    def forward(self, seq: Tensor) -> Tensor:
+        b, _t, d = seq.shape
+        scale = float(d) ** 0.5
+        scores = torch.matmul(self.query.expand(b, -1, -1), seq.transpose(1, 2)) / scale
+        weights = torch.softmax(scores, dim=-1)
+        pooled = torch.matmul(weights, seq).squeeze(1)
+        return self.proj(pooled)
+
+
+class PatchTokenAttentionPooling(nn.Module):
+    """Attention pooling over channel x patch tokens from PatchTST hidden states.
+
+    Input:  (B, C, P, D)
+    Output: (B, D)
+    """
+
+    def __init__(self, d_model: int):
+        super().__init__()
+        self.d_model = d_model
+        self.query = nn.Parameter(torch.randn(1, 1, d_model) * 0.02)
+        self.proj = nn.Linear(d_model, d_model)
+
+    def forward(self, hidden: Tensor) -> Tensor:
+        # (B, C, P, D) -> (B, N, D) with N = C * P
+        b, _c, _p, d = hidden.shape
+        tokens = hidden.reshape(b, -1, d)
+        scale = float(d) ** 0.5
+        scores = torch.matmul(self.query.expand(b, -1, -1), tokens.transpose(1, 2)) / scale
+        weights = torch.softmax(scores, dim=-1)
+        pooled = torch.matmul(weights, tokens).squeeze(1)
+        return self.proj(pooled)
+
+
 class CNNLSTMEncoder(SignalEncoder):
     """2 Conv1D blocks + 2-layer BiLSTM, last timestep aggregation.
 
@@ -60,14 +101,19 @@ class CNNLSTMEncoder(SignalEncoder):
 
 
 class RobustCNNLSTMEncoder(SignalEncoder):
-    """3 Conv1D blocks + 1-layer BiLSTM, h_n concatenation.
+    """3 Conv1D blocks (single temporal downsample) + BiLSTM + temporal attention pool.
 
-    Migrated from ``layers.signal_branch.RobustCNNLSTMSignalBranch``.
+    For T=75, one ``MaxPool1d(2)`` yields ~37 steps into the LSTM (vs ~18 with two pools).
     Default output_dim = 2 * hidden_lstm = 256.
-    Applies Kaiming initialization to all Conv1d and Linear layers.
     """
 
-    def __init__(self, in_channels: int = 3, hidden_lstm: int = 128):
+    def __init__(
+        self,
+        in_channels: int = 3,
+        hidden_lstm: int = 128,
+        cnn_dropout: float = 0.4,
+        lstm_dropout: float = 0.4,
+    ):
         super().__init__()
         self._output_dim = hidden_lstm * 2
 
@@ -75,14 +121,16 @@ class RobustCNNLSTMEncoder(SignalEncoder):
             nn.Conv1d(in_channels, 64, kernel_size=3, padding=1),
             nn.BatchNorm1d(64),
             nn.ReLU(),
+            nn.Dropout(cnn_dropout),
             nn.MaxPool1d(kernel_size=2),
             nn.Conv1d(64, 128, kernel_size=3, padding=1),
             nn.BatchNorm1d(128),
             nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),
+            nn.Dropout(cnn_dropout),
             nn.Conv1d(128, 256, kernel_size=3, padding=1),
             nn.BatchNorm1d(256),
             nn.ReLU(),
+            nn.Dropout(cnn_dropout),
         )
         self.lstm = nn.LSTM(
             input_size=256,
@@ -90,7 +138,10 @@ class RobustCNNLSTMEncoder(SignalEncoder):
             num_layers=1,
             batch_first=True,
             bidirectional=True,
+            dropout=0.0,
         )
+        self.lstm_dropout = nn.Dropout(lstm_dropout)
+        self.temporal_pool = TemporalAttentionPooling(self._output_dim)
         self._init_weights()
 
     def _init_weights(self) -> None:
@@ -107,19 +158,21 @@ class RobustCNNLSTMEncoder(SignalEncoder):
     def forward(self, x_signal: Tensor) -> Tensor:
         x = self.cnn(x_signal)
         x = x.permute(0, 2, 1)
-        _, (h_n, _) = self.lstm(x)
-        return torch.cat((h_n[-2], h_n[-1]), dim=1)
+        lstm_out, _ = self.lstm(x)
+        lstm_out = self.lstm_dropout(lstm_out)
+        return self.temporal_pool(lstm_out)
 
 
 class PatchTSTEncoder(SignalEncoder):
-    """Wrapper around HuggingFace ``PatchTSTModel`` as a SignalEncoder.
+    """HuggingFace ``PatchTSTModel`` + attention pooling over patch tokens.
 
-    Transposes input from ``(B, C, T)`` to ``(B, T, C)`` internally (HF expects
-    channels-last).  Mean-pools over the patch dimension to produce a fixed-size
-    ``(B, d_model)`` embedding.
+    ``patch_length`` and ``patch_stride`` control overlapping token grids
+    (e.g. T=75, patch=15, stride=5 -> ~13 tokens). Hidden states
+    ``(B, C, P, D)`` are aggregated with ``PatchTokenAttentionPooling`` instead
+    of a global mean.
 
-    If ``pretrained_path`` is given, loads encoder weights saved from a
-    ``PatchTSTForPretraining`` checkpoint (strips the ``"model."`` prefix).
+    If ``pretrained_path`` is given, loads backbone weights from MAE pretraining
+    (pooler weights are trained from scratch in supervised stages).
     """
 
     def __init__(
@@ -157,6 +210,7 @@ class PatchTSTEncoder(SignalEncoder):
         )
         self._backbone = PatchTSTModel(config)
         self._d_model = d_model
+        self._pooler = PatchTokenAttentionPooling(d_model)
 
         if pretrained_path is not None:
             self.load_pretrained_encoder(pretrained_path)
@@ -166,12 +220,7 @@ class PatchTSTEncoder(SignalEncoder):
         return self._d_model
 
     def forward(self, x_signal: Tensor) -> Tensor:
-        # (B, C, T) -> (B, T, C) — HuggingFace expects channels-last
-        x = x_signal.permute(0, 2, 1)
-        out = self._backbone(past_values=x)
-        # last_hidden_state: (B, num_channels, num_patches, d_model)
-        # Mean pool over channels and patches -> (B, d_model)
-        return out.last_hidden_state.mean(dim=(1, 2))
+        return self._pooler(self.forward_hidden(x_signal))
 
     def forward_hidden(self, x_signal: Tensor) -> Tensor:
         """Return PatchTST last_hidden_state for HF-style classification heads.

@@ -19,8 +19,13 @@ from hybrid_activity_recognition.models.encoders import (
     NullSignalEncoder,
     RobustCNNLSTMEncoder,
 )
-from hybrid_activity_recognition.models.fusion import ConcatFusion
-from hybrid_activity_recognition.models.heads import LinearHead, MLPHead, PatchTSTHFClassificationHead
+from hybrid_activity_recognition.models.fusion import ConcatFusion, GatedFusion
+from hybrid_activity_recognition.models.heads import (
+    LinearHead,
+    MLPHead,
+    PatchTSTHFClassificationHead,
+    SubjectDiscriminator,
+)
 from hybrid_activity_recognition.models.model import HybridModel
 from hybrid_activity_recognition.models.tsfel_branches import MLPTsfelBranch
 
@@ -31,6 +36,11 @@ _ENCODER_REGISTRY: dict[str, type] = {
 
 _TSFEL_BRANCH_REGISTRY: dict[str, type] = {
     "mlp": MLPTsfelBranch,
+}
+
+_FUSION_REGISTRY: dict[str, type] = {
+    "concat": ConcatFusion,
+    "gated": GatedFusion,
 }
 
 
@@ -45,6 +55,9 @@ def build_hybrid_model(
     tsfel_branch_name: str = "mlp",
     tsfel_hidden_dim: int | None = None,
     tsfel_dropout: float = 0.3,
+    fusion_name: str = "gated",
+    num_subjects: int | None = None,
+    subject_discriminator_hidden: int = 128,
     **encoder_kwargs,
 ) -> HybridModel:
     """Build a HybridModel from component names.
@@ -64,7 +77,13 @@ def build_hybrid_model(
     head_dropout : float
         Dropout rate in the MLPHead.
     tsfel_branch_name : str
-        ``"mlp"`` (identity pass-through). Default ``"mlp"``.
+        ``"mlp"`` (Linear + LayerNorm projection). Default ``"mlp"``.
+    fusion_name : str
+        ``"gated"`` (GMU-style) or ``"concat"`` (legacy). Hybrid mode only.
+    num_subjects : int | None
+        If set (>1), attach a ``SubjectDiscriminator`` on encoder embeddings.
+    subject_discriminator_hidden : int
+        Hidden size of the subject MLP discriminator.
     tsfel_hidden_dim : int | None
         Hidden dimension of the TSFEL branch.  Defaults to ``encoder.output_dim``.
     tsfel_dropout : float
@@ -99,10 +118,17 @@ def build_hybrid_model(
     # Build optional TSFEL branch + fusion
     tsfel_branch = None
     fusion = None
+    if fusion_name not in _FUSION_REGISTRY:
+        raise ValueError(
+            f"Unknown fusion_name: {fusion_name!r}. Available: {sorted(_FUSION_REGISTRY)}"
+        )
+    FusionCls = _FUSION_REGISTRY[fusion_name]
+
     if input_mode == "hybrid":
         tsfel_hidden = tsfel_hidden_dim if tsfel_hidden_dim is not None else encoder.output_dim
         tsfel_branch = TsfelBranchCls(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
-        fusion = ConcatFusion(encoder.output_dim, tsfel_branch.output_dim)
+        d_enc = encoder.output_dim
+        fusion = FusionCls(d_enc, tsfel_branch.output_dim, d_fused=d_enc)
         head_in_dim = fusion.output_dim
     elif input_mode == "tsfel_only":
         tsfel_hidden = tsfel_hidden_dim if tsfel_hidden_dim is not None else n_tsfel_feats
@@ -128,4 +154,19 @@ def build_hybrid_model(
     else:
         raise ValueError("Unknown head_name. Use 'mlp', 'linear', or 'patchtst_hf'.")
 
-    return HybridModel(encoder, tsfel_branch, fusion, head, input_mode)
+    subject_disc = None
+    if num_subjects is not None and num_subjects > 1 and input_mode != "tsfel_only":
+        subject_disc = SubjectDiscriminator(
+            encoder.output_dim,
+            num_subjects,
+            hidden_dim=subject_discriminator_hidden,
+        )
+
+    return HybridModel(
+        encoder,
+        tsfel_branch,
+        fusion,
+        head,
+        input_mode,
+        subject_discriminator=subject_disc,
+    )

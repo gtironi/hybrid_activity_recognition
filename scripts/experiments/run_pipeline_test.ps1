@@ -4,8 +4,8 @@ $train_parquet  = "dataset/processed/AcTBeCalf/windowed_train.parquet"
 $test_parquet   = "dataset/processed/AcTBeCalf/windowed_test.parquet"
 $seed           = "2026"
 $device         = "cuda"
-$epochs          = "2"
-$pretrain_epochs = "2"
+$epochs          = "300"
+$pretrain_epochs = "100"
 
 Write-Host "=== Iniciando Pipeline de Experimentos Completa via PowerShell ===" -ForegroundColor Cyan
 Write-Host "Horário de Início: $(Get-Date)" -ForegroundColor Yellow
@@ -63,6 +63,6 @@ Write-Host "`n>>> [5/5] Executando bloco: tsfel_mlp..." -ForegroundColor Green
 python -m hybrid_activity_recognition.main --mode supervised --model tsfel_mlp --input_mode tsfel_only --labeled_parquet_train $train_parquet --labeled_parquet_test $test_parquet --output_dir "experiments/tsfel_mlp_baseline" --epochs $epochs --batch_size 512 --seed $seed --device $device
 
 
-Write-Hex "`n--------------------------------------------------------"
+Write-Host "`n--------------------------------------------------------"
 Write-Host "=== Todos os Experimentos de Teste Concluídos com Sucesso! ===" -ForegroundColor Cyan
 Write-Host "Horário de Término: $(Get-Date)" -ForegroundColor Yellow

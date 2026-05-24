@@ -36,7 +36,11 @@ def parse_args():
     p = argparse.ArgumentParser(description="Hybrid Activity Recognition — experiments CLI")
 
     # --- Mode & model ---
-    p.add_argument("--mode", choices=("supervised", "pretrain", "pretrain_ts2vec", "finetune", "test"), required=True)
+    p.add_argument(
+        "--mode",
+        choices=("supervised", "pretrain", "pretrain_ts2vec", "finetune", "test", "ensemble"),
+        required=True,
+    )
     p.add_argument(
         "--model",
         type=str,
@@ -58,6 +62,24 @@ def parse_args():
     p.add_argument("--labeled_parquet_test", type=str, default="", help="Windowed parquet for testing.")
     p.add_argument("--labeled_parquet_val", type=str, default="", help="Optional validation parquet.")
     p.add_argument("--val_fraction", type=float, default=0.1, help="Stratified val fraction from train.")
+    p.add_argument(
+        "--signal_norm",
+        choices=("global", "subject"),
+        default="subject",
+        help="Raw signal normalization: global (train z-score) or per-calf with shrinkage on val/test.",
+    )
+    p.add_argument(
+        "--norm_shrinkage_tau",
+        type=float,
+        default=50.0,
+        help="Prior strength for subject-wise shrinkage toward train-global stats (val/test calves).",
+    )
+    p.add_argument(
+        "--fusion",
+        choices=("gated", "concat"),
+        default="gated",
+        help="Hybrid fusion: gated (GMU) or concat (legacy).",
+    )
     p.add_argument("--pretrain_parquet", type=str, default="", help="Windowed parquet for PatchTST pretraining.")
 
     # --- Checkpoints ---
@@ -74,12 +96,88 @@ def parse_args():
     p.add_argument("--lr", type=float, default=None, help="Learning rate (if omitted, uses mode default)")
     p.add_argument("--hidden_lstm", type=int, default=None)
     p.add_argument("--no_class_weights", action="store_true", help="Supervised: disable class balancing")
+    p.add_argument(
+        "--loss_criterion",
+        choices=("weighted_ce", "focal"),
+        default="weighted_ce",
+        help="Stage-2 supervised loss: weighted cross-entropy or focal loss.",
+    )
+    p.add_argument(
+        "--focal_gamma",
+        type=float,
+        default=2.0,
+        help="Focal loss focusing parameter (used when --loss_criterion focal).",
+    )
+    p.add_argument(
+        "--label_smoothing",
+        type=float,
+        default=0.05,
+        help="Stage-3 finetune label smoothing for CrossEntropyLoss.",
+    )
+    p.add_argument(
+        "--finetune_early_stopping_patience",
+        type=int,
+        default=15,
+        help="Stage-3 finetune early stopping patience on validation accuracy.",
+    )
     p.add_argument("--init_encoder_from", type=str, default="",
                    help="Load only encoder weights from this checkpoint (e.g. TS2Vec pretrain). Skipped if empty.")
     p.add_argument(
         "--freeze_encoder",
         action="store_true",
         help="Supervised/finetune: freeze signal encoder (train head / TSFEL / fusion only).",
+    )
+    p.add_argument(
+        "--apply_augmentation",
+        action="store_true",
+        help="Apply online jitter/scaling augmentation on training windows only.",
+    )
+    p.add_argument(
+        "--cnn_dropout",
+        type=float,
+        default=0.4,
+        help="Dropout after Conv blocks in RobustCNNLSTMEncoder.",
+    )
+    p.add_argument(
+        "--lstm_dropout",
+        type=float,
+        default=0.4,
+        help="Dropout on LSTM sequence outputs in RobustCNNLSTMEncoder.",
+    )
+    p.add_argument(
+        "--rf_artifact_dir",
+        type=str,
+        default="",
+        help="Directory with rf_model.joblib, rf_scaler.joblib, rf_feat_cols.json (ensemble mode).",
+    )
+    p.add_argument(
+        "--ensemble_method",
+        choices=("soft_vote", "stacking"),
+        default="soft_vote",
+        help="Late fusion strategy for ensemble mode.",
+    )
+    p.add_argument(
+        "--ensemble_deep_weight",
+        type=float,
+        default=0.5,
+        help="Weight for deep model in soft_vote (RF gets 1 - weight).",
+    )
+    p.add_argument(
+        "--rf_n_estimators",
+        type=int,
+        default=200,
+        help="If rf_artifact_dir missing, fit a new RF with this many trees on train parquet.",
+    )
+    p.add_argument(
+        "--adversarial_subject_alignment",
+        action="store_true",
+        help="Subject-adversarial GRL on encoder embeddings during supervised training.",
+    )
+    p.add_argument(
+        "--adversarial_beta",
+        type=float,
+        default=0.1,
+        help="Weight for subject discriminator loss (L_total = L_beh + beta * L_subj).",
     )
 
     # --- PatchTST-specific ---
@@ -115,7 +213,15 @@ def parse_args():
     p.add_argument("--pretrain_epochs", type=int, default=40)
     p.add_argument("--pretrain_lr", type=float, default=1e-3)
     # MAE (PatchTST)
-    p.add_argument("--mask_ratio", type=float, default=0.75, help="MAE masking ratio for PatchTST pretraining.")
+    p.add_argument(
+        "--mask_ratio",
+        type=float,
+        default=0.6,
+        help=(
+            "MAE masking ratio for PatchTST pretrain. For T=75 use 0.5–0.6 "
+            "(0.75 leaves too few visible patches)."
+        ),
+    )
     # TS2Vec (CNN+LSTM / robust)
     p.add_argument("--temporal_unit", type=int, default=0,
                    help="TS2Vec: minimum pooling scale at which to apply temporal contrast.")
@@ -144,7 +250,40 @@ def _build_encoder_kwargs(args) -> dict:
         )
         if args.patchtst_checkpoint:
             kwargs["pretrained_path"] = args.patchtst_checkpoint
+    if args.model == "robust":
+        kwargs["cnn_dropout"] = args.cnn_dropout
+        kwargs["lstm_dropout"] = args.lstm_dropout
     return kwargs
+
+
+def _build_model_for_run(
+    args,
+    *,
+    num_classes: int,
+    n_feats: int,
+    num_subjects_train: int,
+    device: torch.device,
+):
+    encoder_kwargs = _build_encoder_kwargs(args)
+    num_subjects = None
+    if args.adversarial_subject_alignment:
+        if args.input_mode == "tsfel_only":
+            raise SystemExit("--adversarial_subject_alignment requires a signal encoder (not tsfel_only).")
+        if num_subjects_train < 2:
+            raise SystemExit(
+                f"Subject adversarial alignment needs >=2 training subjects, got {num_subjects_train}."
+            )
+        num_subjects = num_subjects_train
+    return build_hybrid_model(
+        encoder_name=args.model,
+        input_mode=args.input_mode,
+        num_classes=num_classes,
+        n_tsfel_feats=n_feats,
+        head_name=args.head,
+        fusion_name=args.fusion,
+        num_subjects=num_subjects,
+        **encoder_kwargs,
+    ).to(device)
 
 
 def _prepare_labeled_loaders(args):
@@ -161,6 +300,9 @@ def _prepare_labeled_loaders(args):
         random_state=args.seed,
         val_fraction=args.val_fraction,
         parquet_val_path=val_path,
+        signal_norm=args.signal_norm,
+        norm_shrinkage_tau=args.norm_shrinkage_tau,
+        apply_augmentation=args.apply_augmentation,
     )
 
 
@@ -249,18 +391,74 @@ def main():
         logger.info("TS2Vec pretraining complete. Checkpoints in %s", out)
         return
 
+    # ---- Ensemble mode (deep + TSFEL RF) ----
+    if args.mode == "ensemble":
+        from hybrid_activity_recognition.training.ensemble import (
+            fit_tsfel_random_forest_from_dataset,
+            load_rf_artifacts,
+            save_rf_artifacts,
+        )
+
+        train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _, num_subjects, _ = (
+            _prepare_labeled_loaders(args)
+        )
+        model = _build_model_for_run(
+            args,
+            num_classes=num_classes,
+            n_feats=n_feats,
+            num_subjects_train=num_subjects,
+            device=device,
+        )
+        trainer = Trainer(model, device, out)
+
+        if args.rf_artifact_dir.strip():
+            rf_art = load_rf_artifacts(args.rf_artifact_dir)
+        else:
+            logger.info("Training TSFEL Random Forest on train split only (no --rf_artifact_dir).")
+            ds = train_dl.dataset
+            rf_art = fit_tsfel_random_forest_from_dataset(
+                ds.features.numpy(),
+                ds.labels.numpy(),
+                n_estimators=args.rf_n_estimators,
+                seed=args.seed,
+            )
+            save_rf_artifacts(rf_art, out / "rf_artifacts")
+
+        ckpt = args.checkpoint or str(out / "finetuned_best.pt")
+        if not Path(ckpt).is_file():
+            ckpt = args.checkpoint or str(out / "best.pt")
+        res = trainer.run_ensemble_evaluation(
+            val_dl=val_dl,
+            test_dl=test_dl,
+            rf_artifacts=rf_art,
+            deep_checkpoint=ckpt,
+            num_classes=num_classes,
+            method=args.ensemble_method,
+            weight_deep=args.ensemble_deep_weight,
+        )
+        paths = save_test_evaluation_artifacts(
+            res["y_true"], res["y_pred"], class_names, out, stem="ensemble_test"
+        )
+        logger.info(
+            "ensemble test: acc=%.4f macro_f1=%.4f | artifacts=%s",
+            res["test"]["accuracy"],
+            res["test"]["f1_macro"],
+            paths["json_path"],
+        )
+        return
+
     # ---- Test mode ----
     if args.mode == "test":
-        train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = _prepare_labeled_loaders(args)
-        encoder_kwargs = _build_encoder_kwargs(args)
-        model = build_hybrid_model(
-            encoder_name=args.model,
-            input_mode=args.input_mode,
+        train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _, num_subjects, _ = (
+            _prepare_labeled_loaders(args)
+        )
+        model = _build_model_for_run(
+            args,
             num_classes=num_classes,
-            n_tsfel_feats=n_feats,
-        head_name=args.head,
-            **encoder_kwargs,
-        ).to(device)
+            n_feats=n_feats,
+            num_subjects_train=num_subjects,
+            device=device,
+        )
         logger.info("model (%s/%s):\n%s", args.model, args.input_mode, model)
         ckpt = args.checkpoint or str(out / "best.pt")
         trainer = Trainer(model, device, out)
@@ -276,19 +474,32 @@ def main():
         return
 
     # ---- Supervised / Finetune ----
-    train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _ = _prepare_labeled_loaders(args)
-    logger.info("classes=%d n_tsfel_feats=%d", len(class_names), n_feats)
+    train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _, num_subjects, _ = (
+        _prepare_labeled_loaders(args)
+    )
+    logger.info(
+        "classes=%d n_tsfel_feats=%d train_subjects=%d",
+        len(class_names),
+        n_feats,
+        num_subjects,
+    )
 
-    encoder_kwargs = _build_encoder_kwargs(args)
-    model = build_hybrid_model(
-        encoder_name=args.model,
-        input_mode=args.input_mode,
+    model = _build_model_for_run(
+        args,
         num_classes=num_classes,
-        n_tsfel_feats=n_feats,
-        head_name=args.head,
-        **encoder_kwargs,
-    ).to(device)
-    logger.info("model (%s/%s):\n%s", args.model, args.input_mode, model)
+        n_feats=n_feats,
+        num_subjects_train=num_subjects,
+        device=device,
+    )
+    logger.info(
+        "model (%s/%s) fusion=%s signal_norm=%s adversarial=%s:\n%s",
+        args.model,
+        args.input_mode,
+        args.fusion,
+        args.signal_norm,
+        args.adversarial_subject_alignment,
+        model,
+    )
 
     if args.init_encoder_from:
         src = Path(args.init_encoder_from)
@@ -316,8 +527,12 @@ def main():
             epochs=args.epochs,
             lr=lr,
             use_class_weights=not args.no_class_weights,
+            loss_criterion=args.loss_criterion,
+            focal_gamma=args.focal_gamma,
             resume_from=resume,
             freeze_encoder=args.freeze_encoder,
+            adversarial_subject_alignment=args.adversarial_subject_alignment,
+            adversarial_beta=args.adversarial_beta,
         )
         res = trainer.evaluate(test_dl, out / "best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
@@ -338,6 +553,8 @@ def main():
             load_path=load_from,
             epochs=args.epochs,
             lr=lr,
+            label_smoothing=args.label_smoothing,
+            early_stopping_patience=args.finetune_early_stopping_patience,
             freeze_encoder=args.freeze_encoder,
         ) is None:
             raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
