@@ -216,6 +216,123 @@ def _align_tsfel_columns(df: pd.DataFrame, feat_cols: list[str]) -> pd.DataFrame
             out[c] = 0.0
     return out
 
+def prepare_kfold_datasets(
+    parquet_train_path: str,
+    parquet_test_path: str,
+    batch_size: int = 64,
+    num_workers: int = 2,
+    signal_norm: str = "subject",
+    norm_shrinkage_tau: float = 50.0,
+    apply_augmentation: bool = False,
+) -> tuple[
+    CalfHybridDataset,  # Dataset de treino completo (para K-Fold)
+    DataLoader,         # DataLoader de teste isolado
+    np.ndarray,         # groups (subject IDs codificados para o K-Fold)
+    list[str],          # class_names
+    int,                # num_classes
+    int,                # n_feats
+    LabelEncoder,       # le
+    int,                # num_subjects_train
+    LabelEncoder,       # subject_le
+]:
+    """
+    Prepara os dados para validação cruzada (K-Fold).
+    Retorna o dataset de treino inteiro e o array de grupos (IDs de sujeitos), 
+    garantindo que as normalizações e scalers usem 100% do treino disponível.
+    """
+    df_train = pd.read_parquet(parquet_train_path)
+    df_train["label"] = df_train["label"].astype(str)
+
+    df_test = pd.read_parquet(parquet_test_path)
+    df_test["label"] = df_test["label"].astype(str)
+    
+    feat_cols = _feature_columns(df_train)
+    df_train = _align_tsfel_columns(df_train, feat_cols)
+    df_test = _align_tsfel_columns(df_test, feat_cols)
+
+    subject_col = _subject_column(df_train)
+
+    # 1. Label Encoder
+    le = LabelEncoder()
+    le.fit(df_train["label"])
+    known = set(le.classes_)
+
+    unk_te = set(df_test["label"].unique()) - known
+    if unk_te:
+        raise ValueError(f"Test parquet contains labels not in train: {sorted(unk_te)!r}.")
+
+    # 2. Extração dos sinais e features
+    signals_tr = _stack_signals(df_train)
+    signals_te = _stack_signals(df_test)
+    
+    features_tr = df_train[feat_cols].values.astype(np.float32)
+    features_te = df_test[feat_cols].values.astype(np.float32)
+    features_tr = np.nan_to_num(features_tr, nan=0.0)
+    features_te = np.nan_to_num(features_te, nan=0.0)
+
+    y_tr = le.transform(df_train["label"])
+    y_te = le.transform(df_test["label"])
+
+    # 3. Normalização de Sinais
+    global_mean, global_std = _signal_stats_over_windows(signals_tr)
+
+    if signal_norm == "global":
+        def _norm_global(s: np.ndarray) -> np.ndarray:
+            return (s - global_mean) / (global_std + 1e-6)
+        signals_tr_n = _norm_global(signals_tr)
+        signals_te_n = _norm_global(signals_te)
+    else:
+        train_subject_stats = _build_subject_signal_stats(df_train, signals_tr)
+        test_pool_stats = _build_subject_signal_stats(df_test, signals_te)
+        
+        signals_tr_n = _normalize_signals(
+            signals_tr, df_train,
+            global_mean=global_mean, global_std=global_std,
+            train_subject_stats=train_subject_stats, pool_subject_stats=None,
+            shrinkage_tau=norm_shrinkage_tau, use_shrinkage=False,
+        )
+        signals_te_n = _normalize_signals(
+            signals_te, df_test,
+            global_mean=global_mean, global_std=global_std,
+            train_subject_stats=None, pool_subject_stats=test_pool_stats,
+            shrinkage_tau=norm_shrinkage_tau, use_shrinkage=True,
+        )
+
+    # 4. Escalonamento TSFEL
+    scaler = StandardScaler()
+    scaler.fit(features_tr)
+    features_tr_n = scaler.transform(features_tr)
+    features_te_n = scaler.transform(features_te)
+
+    # 5. Codificação dos Sujeitos (Para os 'groups' do K-Fold e DANN)
+    subject_le = LabelEncoder()
+    subject_le.fit(df_train[subject_col].astype(str))
+    groups_tr = _encode_subject_indices(df_train, subject_le)
+    num_subjects_train = len(subject_le.classes_)
+
+    class_names = le.classes_
+    num_classes = len(class_names)
+    n_feats = len(feat_cols)
+    pin_memory = torch.cuda.is_available()
+
+    # 6. Construção do Dataset de Treino Único e do DataLoader de Teste
+    train_full_ds = CalfHybridDataset(
+        signals_tr_n,
+        features_tr_n,
+        y_tr,
+        subject_indices=groups_tr,
+        augment=apply_augmentation,
+    )
+    
+    test_dl = DataLoader(
+        CalfHybridDataset(signals_te_n, features_te_n, y_te),
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+
+    return train_full_ds, test_dl, groups_tr, class_names, num_classes, n_feats, le, num_subjects_train, subject_le
 
 def prepare_train_val_test_loaders(
     parquet_train_path: str,

@@ -11,10 +11,13 @@ import argparse
 import logging
 import sys
 from pathlib import Path
+from sklearn.model_selection import GroupKFold
+from torch.utils.data import Subset, DataLoader
+import numpy as np
 
 import torch
 
-from hybrid_activity_recognition.data.dataloader import prepare_train_val_test_loaders
+from hybrid_activity_recognition.data.dataloader import prepare_train_val_test_loaders, prepare_kfold_datasets
 from hybrid_activity_recognition.models import build_hybrid_model
 from hybrid_activity_recognition.training.evaluation_report import save_test_evaluation_artifacts
 from hybrid_activity_recognition.training.metrics import classification_metrics_numpy
@@ -226,6 +229,12 @@ def parse_args():
     p.add_argument("--temporal_unit", type=int, default=0,
                    help="TS2Vec: minimum pooling scale at which to apply temporal contrast.")
 
+    p.add_argument(
+        "--cv_folds",
+        type=int,
+        default=1,
+        help="Número de folds para K-Fold Cross-Validation por sujeito. Se 1, usa divisão estática."
+    )
     return p.parse_args()
 
 
@@ -393,6 +402,11 @@ def main():
 
     # ---- Ensemble mode (deep + TSFEL RF) ----
     if args.mode == "ensemble":
+        if args.cv_folds > 1:
+            logger.error("Modo 'ensemble' com Random Forest não é suportado simultaneamente com --cv_folds > 1.")
+            logger.error("O Ensemble Soft-Voting entre as redes já é feito automaticamente no final de 'supervised' e 'finetune'.")
+            raise SystemExit("Use --cv_folds 1 para habilitar o Stacking com Random Forest clássico.")
+
         from hybrid_activity_recognition.training.ensemble import (
             fit_tsfel_random_forest_from_dataset,
             load_rf_artifacts,
@@ -449,124 +463,216 @@ def main():
 
     # ---- Test mode ----
     if args.mode == "test":
-        train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _, num_subjects, _ = (
-            _prepare_labeled_loaders(args)
-        )
-        model = _build_model_for_run(
-            args,
-            num_classes=num_classes,
-            n_feats=n_feats,
-            num_subjects_train=num_subjects,
-            device=device,
-        )
-        logger.info("model (%s/%s):\n%s", args.model, args.input_mode, model)
-        ckpt = args.checkpoint or str(out / "best.pt")
-        trainer = Trainer(model, device, out)
-        res = trainer.evaluate(test_dl, ckpt)
-        metrics = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        paths = save_test_evaluation_artifacts(
-            res["y_true"], res["y_pred"], class_names, out, stem="test"
-        )
-        logger.info("checkpoint=%s", ckpt)
-        logger.info("test accuracy=%.4f macro_f1=%.4f", metrics["accuracy"], metrics["f1_macro"])
-        logger.info("saved confusion matrix: %s", paths["png_path"])
-        logger.info("saved per-class metrics: %s", paths["json_path"])
-        return
+        if args.cv_folds > 1:
+            logger.info("Modo Teste: Avaliando Ensemble K-Fold (%d Folds)", args.cv_folds)
+            _, test_dl, _, class_names, num_classes, n_feats, _, num_subjects_train, _ = prepare_kfold_datasets(
+                args.labeled_parquet_train, args.labeled_parquet_test,
+                batch_size=args.batch_size, num_workers=args.num_workers,
+                signal_norm=args.signal_norm, norm_shrinkage_tau=args.norm_shrinkage_tau,
+                apply_augmentation=args.apply_augmentation,
+            )
+            all_probas = []
+            for fold in range(1, args.cv_folds + 1):
+                # Prefere o modelo finetunado se existir, senão pega o base
+                ckpt_name = f"finetuned_best_fold_{fold}.pt"
+                if not (out / ckpt_name).is_file():
+                    ckpt_name = f"best_fold_{fold}.pt"
+                
+                model = _build_model_for_run(args, num_classes=num_classes, n_feats=n_feats, num_subjects_train=num_subjects_train, device=device)
+                trainer = Trainer(model, device, out)
+                y_true, proba = trainer.predict_proba(test_dl, out / ckpt_name, num_classes=num_classes)
+                all_probas.append(proba)
+            
+            avg_proba = np.mean(all_probas, axis=0)
+            y_pred = avg_proba.argmax(axis=1)
+            metrics = classification_metrics_numpy(y_true, y_pred)
+            paths = save_test_evaluation_artifacts(y_true, y_pred, class_names, out, stem="test_cv_ensemble")
+            logger.info("TESTE FINAL CV: acc=%.4f macro_f1=%.4f", metrics["accuracy"], metrics["f1_macro"])
+            return
 
-    # ---- Supervised / Finetune ----
-    train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _, num_subjects, _ = (
-        _prepare_labeled_loaders(args)
-    )
-    logger.info(
-        "classes=%d n_tsfel_feats=%d train_subjects=%d",
-        len(class_names),
-        n_feats,
-        num_subjects,
-    )
-
-    model = _build_model_for_run(
-        args,
-        num_classes=num_classes,
-        n_feats=n_feats,
-        num_subjects_train=num_subjects,
-        device=device,
-    )
-    logger.info(
-        "model (%s/%s) fusion=%s signal_norm=%s adversarial=%s:\n%s",
-        args.model,
-        args.input_mode,
-        args.fusion,
-        args.signal_norm,
-        args.adversarial_subject_alignment,
-        model,
-    )
-
-    if args.init_encoder_from:
-        src = Path(args.init_encoder_from)
-        if not src.is_file():
-            raise SystemExit(f"--init_encoder_from: file not found: {src}")
-        state = torch.load(src, map_location=device, weights_only=True)
-        if isinstance(state, dict) and "model_state_dict" in state:
-            state = state["model_state_dict"]
-        enc_state = {k[len("encoder."):]: v for k, v in state.items() if k.startswith("encoder.")}
-        if not enc_state:
-            raise SystemExit(f"--init_encoder_from: no 'encoder.*' keys found in {src}")
-        miss, unex = model.encoder.load_state_dict(enc_state, strict=False)
-        logger.info("Loaded encoder from %s (loaded=%d, missing=%d, unexpected=%d)",
-                    src, len(enc_state), len(miss), len(unex))
-
-    trainer = Trainer(model, device, out)
+        else:
+            # Lógica Antiga (1 fold)
+            train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _, num_subjects, _ = _prepare_labeled_loaders(args)
+            model = _build_model_for_run(args, num_classes=num_classes, n_feats=n_feats, num_subjects_train=num_subjects, device=device)
+            ckpt = args.checkpoint or str(out / "best.pt")
+            trainer = Trainer(model, device, out)
+            res = trainer.evaluate(test_dl, ckpt)
+            metrics = classification_metrics_numpy(res["y_true"], res["y_pred"])
+            paths = save_test_evaluation_artifacts(res["y_true"], res["y_pred"], class_names, out, stem="test")
+            logger.info("test accuracy=%.4f macro_f1=%.4f", metrics["accuracy"], metrics["f1_macro"])
+            return
 
     if args.mode == "supervised":
         lr = args.lr if args.lr is not None else 1e-3
-        resume = args.checkpoint if args.checkpoint else None
-        trainer.train_supervised(
-            train_dl,
-            val_dl,
-            num_classes,
-            epochs=args.epochs,
-            lr=lr,
-            use_class_weights=not args.no_class_weights,
-            loss_criterion=args.loss_criterion,
-            focal_gamma=args.focal_gamma,
-            resume_from=resume,
-            freeze_encoder=args.freeze_encoder,
-            adversarial_subject_alignment=args.adversarial_subject_alignment,
-            adversarial_beta=args.adversarial_beta,
-        )
-        res = trainer.evaluate(test_dl, out / "best.pt")
-        m = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        paths = save_test_evaluation_artifacts(
-            res["y_true"], res["y_pred"], class_names, out, stem="test"
-        )
-        logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
-        logger.info("saved confusion matrix: %s", paths["png_path"])
-        logger.info("saved per-class metrics: %s", paths["json_path"])
-        return
+        
+        # K-fold supervised training -> no validation parquet
+        if args.cv_folds > 1:
+            logger.info("K-Fold Cross-Validation per subject (Folds=%d)...", args.cv_folds)
+            
+            train_full_ds, test_dl, groups_tr, class_names, num_classes, n_feats, le, num_subjects_train, subject_le = prepare_kfold_datasets(
+                args.labeled_parquet_train,
+                args.labeled_parquet_test,
+                batch_size=args.batch_size,
+                num_workers=args.num_workers,
+                signal_norm=args.signal_norm,
+                norm_shrinkage_tau=args.norm_shrinkage_tau,
+                apply_augmentation=args.apply_augmentation,
+            )
+            
+            gkf = GroupKFold(n_splits=args.cv_folds)
+            fold_checkpoints = []
+            
+            for fold, (train_idx, val_idx) in enumerate(gkf.split(train_full_ds.signals, train_full_ds.labels, groups=groups_tr)):
+                logger.info("=== Training Fold %d/%d ===", fold + 1, args.cv_folds)
+                
+                train_sub = Subset(train_full_ds, train_idx)
+                val_sub = Subset(train_full_ds, val_idx)
+                
+                pin_memory = torch.cuda.is_available()
+                train_dl = DataLoader(train_sub, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=pin_memory)
+                val_dl = DataLoader(val_sub, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=pin_memory)
+                
+                model = _build_model_for_run(args, num_classes=num_classes, n_feats=n_feats, num_subjects_train=num_subjects_train, device=device)
+                trainer = Trainer(model, device, out)
+                
+                ckpt_name = f"best_fold_{fold + 1}.pt"
+                
+                trainer.train_supervised(
+                    train_dl,
+                    val_dl,
+                    num_classes,
+                    epochs=args.epochs,
+                    lr=lr,
+                    use_class_weights=not args.no_class_weights,
+                    loss_criterion=args.loss_criterion,
+                    focal_gamma=args.focal_gamma,
+                    checkpoint_name=ckpt_name,
+                    freeze_encoder=args.freeze_encoder,
+                    adversarial_subject_alignment=args.adversarial_subject_alignment,
+                    adversarial_beta=args.adversarial_beta,
+                )
+                fold_checkpoints.append(ckpt_name)
+            
+            # (ENSEMBLE SOFT-VOTING)
+            logger.info("=== Avaliação no Conjunto de Teste (Ensemble de %d Folds) ===", args.cv_folds)
+            all_probas = []
+            for ckpt_name in fold_checkpoints:
+                model = _build_model_for_run(args, num_classes=num_classes, n_feats=n_feats, num_subjects_train=num_subjects_train, device=device)
+                trainer = Trainer(model, device, out)
+                y_true, proba = trainer.predict_proba(test_dl, out / ckpt_name, num_classes=num_classes)
+                all_probas.append(proba)
+            
+            # K models mean
+            avg_proba = np.mean(all_probas, axis=0)
+            y_pred_ensemble = avg_proba.argmax(axis=1)
+            
+            m = classification_metrics_numpy(y_true, y_pred_ensemble)
+            paths = save_test_evaluation_artifacts(y_true, y_pred_ensemble, class_names, out, stem="test_cv_ensemble")
+            logger.info("TESTE FINAL (CV): acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
+            logger.info("Relatórios CV salvos em: %s", paths["json_path"])
+            return
 
+        # k-fold == 1 -> normal supervised training
+        else:
+            resume = args.checkpoint if args.checkpoint else None
+            trainer.train_supervised(
+                train_dl,
+                val_dl,
+                num_classes,
+                epochs=args.epochs,
+                lr=lr,
+                use_class_weights=not args.no_class_weights,
+                loss_criterion=args.loss_criterion,
+                focal_gamma=args.focal_gamma,
+                resume_from=resume,
+                freeze_encoder=args.freeze_encoder,
+                adversarial_subject_alignment=args.adversarial_subject_alignment,
+                adversarial_beta=args.adversarial_beta,
+            )
+            res = trainer.evaluate(test_dl, out / "best.pt")
+            m = classification_metrics_numpy(res["y_true"], res["y_pred"])
+            paths = save_test_evaluation_artifacts(
+                res["y_true"], res["y_pred"], class_names, out, stem="test"
+            )
+            logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
+            logger.info("saved confusion matrix: %s", paths["png_path"])
+            logger.info("saved per-class metrics: %s", paths["json_path"])
+            return
+
+# ---- Finetune mode ----
     if args.mode == "finetune":
-        load_from = args.checkpoint or (out / "best.pt")
         lr = args.lr if args.lr is not None else 1e-4
-        if trainer.finetune(
-            train_dl,
-            val_dl,
-            load_path=load_from,
-            epochs=args.epochs,
-            lr=lr,
-            label_smoothing=args.label_smoothing,
-            early_stopping_patience=args.finetune_early_stopping_patience,
-            freeze_encoder=args.freeze_encoder,
-        ) is None:
-            raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
-        res = trainer.evaluate(test_dl, out / "finetuned_best.pt")
-        m = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        paths = save_test_evaluation_artifacts(
-            res["y_true"], res["y_pred"], class_names, out, stem="test"
-        )
-        logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
-        logger.info("saved confusion matrix: %s", paths["png_path"])
-        logger.info("saved per-class metrics: %s", paths["json_path"])
-        return
+
+        # --- NOVA LÓGICA: FINETUNE EM K-FOLD ---
+        if args.cv_folds > 1:
+            logger.info("Iniciando Finetune com K-Fold (Folds=%d)...", args.cv_folds)
+            train_full_ds, test_dl, groups_tr, class_names, num_classes, n_feats, le, num_subjects_train, subject_le = prepare_kfold_datasets(
+                args.labeled_parquet_train, args.labeled_parquet_test,
+                batch_size=args.batch_size, num_workers=args.num_workers,
+                signal_norm=args.signal_norm, norm_shrinkage_tau=args.norm_shrinkage_tau,
+                apply_augmentation=args.apply_augmentation,
+            )
+            gkf = GroupKFold(n_splits=args.cv_folds)
+            fold_checkpoints = []
+
+            for fold, (train_idx, val_idx) in enumerate(gkf.split(train_full_ds.signals, train_full_ds.labels, groups=groups_tr)):
+                logger.info("=== Finetune Fold %d/%d ===", fold + 1, args.cv_folds)
+                train_sub = Subset(train_full_ds, train_idx)
+                val_sub = Subset(train_full_ds, val_idx)
+                pin_memory = torch.cuda.is_available()
+                train_dl = DataLoader(train_sub, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers, pin_memory=pin_memory)
+                val_dl = DataLoader(val_sub, batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, pin_memory=pin_memory)
+
+                # Cria a rede zerada
+                model = _build_model_for_run(args, num_classes=num_classes, n_feats=n_feats, num_subjects_train=num_subjects_train, device=device)
+                trainer = Trainer(model, device, out)
+
+                # Carrega o peso "best_fold_X" gerado na Fase 2 Supervisionada
+                load_from = out / f"best_fold_{fold + 1}.pt"
+                ckpt_name = f"finetuned_best_fold_{fold + 1}.pt"
+
+                if trainer.finetune(
+                    train_dl, val_dl, load_path=load_from, epochs=args.epochs, lr=lr,
+                    label_smoothing=args.label_smoothing, early_stopping_patience=args.finetune_early_stopping_patience,
+                    freeze_encoder=args.freeze_encoder, checkpoint_name=ckpt_name
+                ) is None:
+                    logger.warning("Finetune cancelado no fold %d. Checkpoint base não encontrado.", fold + 1)
+                    continue
+                fold_checkpoints.append(ckpt_name)
+
+            # AVALIAÇÃO FINAL (Ensemble de Finetunes)
+            logger.info("=== Avaliação Finetune no Conjunto de Teste (Ensemble de %d Folds) ===", len(fold_checkpoints))
+            all_probas = []
+            for ckpt_name in fold_checkpoints:
+                model = _build_model_for_run(args, num_classes=num_classes, n_feats=n_feats, num_subjects_train=num_subjects_train, device=device)
+                trainer = Trainer(model, device, out)
+                y_true, proba = trainer.predict_proba(test_dl, out / ckpt_name, num_classes=num_classes)
+                all_probas.append(proba)
+
+            avg_proba = np.mean(all_probas, axis=0)
+            y_pred_ensemble = avg_proba.argmax(axis=1)
+            m = classification_metrics_numpy(y_true, y_pred_ensemble)
+            paths = save_test_evaluation_artifacts(y_true, y_pred_ensemble, class_names, out, stem="finetuned_test_cv_ensemble")
+            logger.info("TESTE FINAL FINETUNE (CV): acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
+            return
+
+        # --- LÓGICA ANTIGA PARA cv_folds=1 ---
+        else:
+            train_dl, val_dl, test_dl, class_names, num_classes, n_feats, _, num_subjects, _ = _prepare_labeled_loaders(args)
+            model = _build_model_for_run(args, num_classes=num_classes, n_feats=n_feats, num_subjects_train=num_subjects, device=device)
+            trainer = Trainer(model, device, out)
+            load_from = args.checkpoint or (out / "best.pt")
+            if trainer.finetune(
+                train_dl, val_dl, load_path=load_from, epochs=args.epochs, lr=lr,
+                label_smoothing=args.label_smoothing, early_stopping_patience=args.finetune_early_stopping_patience,
+                freeze_encoder=args.freeze_encoder,
+            ) is None:
+                raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
+            res = trainer.evaluate(test_dl, out / "finetuned_best.pt")
+            m = classification_metrics_numpy(res["y_true"], res["y_pred"])
+            paths = save_test_evaluation_artifacts(res["y_true"], res["y_pred"], class_names, out, stem="finetuned_test")
+            logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
+            return
 
 
 if __name__ == "__main__":

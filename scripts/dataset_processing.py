@@ -32,44 +32,15 @@ DEFAULT_TEST_SUBJECTS = (1329, 1343, 1353, 1357, 1372)
 DEFAULT_TEST_FRACTION = 0.2
 DEFAULT_BEHAVIOR_COLUMN = "behaviour"
 DEFAULT_MIN_TRAIN_PROPORTION_PER_BEHAVIOR = 0.01
-DEFAULT_UNKNOWN_CANONICAL_LABEL = "Other"
+DEFAULT_UNKNOWN_CANONICAL_LABEL = "other"
 
 # Raw (CSV) behaviour strings → canonical class names. Used before train/test split.
 BEHAVIOUR_LABEL_MAP: dict[str, list[str]] = {
-    "Standing": ["standing"],
     "Lying": ["lying", "lying-down"],
-    "Drinking": ["drinking", "drinking_milk", "drinking_electrolytes", "drinking|water"],
-    "Eating": ["eating", "eating_concentrates", "eating_bedding", "eating_forage"],
+    "Drinking_milk": ["drinking_milk"],
     "Walking": ["walking", "backward"],
-    "Run": ["running"],
+    "Running": ["running"],
     "Grooming": ["grooming", "grooming_lying", "grooming|None"],
-    "Social Interaction": [
-        "social",
-        "social_sniff",
-        "social_sniff_lying",
-        "social_groom",
-        "social_groom_lying",
-        "social_nudge",
-        "social_nudge_lying",
-    ],
-    "Play": ["play", "play_object", "headbutt", "jump", "mount"],
-    "Rising": ["rising"],
-    "Rumination": ["rumination", "rumination_lying"],
-    "Defecation": ["defecation"],
-    "Urination": ["urination"],
-    "Oral manipulation of pen": ["oral_manipulation_of_pen"],
-    "Sniff": ["sniff", "sniff_walking", "sniff_lying"],
-    "Abnormal": [
-        "abnormal",
-        "cross-suckle_udder",
-        "cross-suckle_other",
-        "tongue_rolling",
-        "tongue_rolling_lying",
-    ],
-    "SRS": ["SRS", "scratch", "rub", "stretch"],
-    "Cough": ["cough"],
-    "Fall": ["fall"],
-    "Vocalization": ["vocalization"],
 }
 
 _RAW_TO_CANONICAL: dict[str, str] = {
