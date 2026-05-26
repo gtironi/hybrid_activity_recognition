@@ -14,5 +14,11 @@ tokenizers==0.22.2
 # --- Scripts de dados (prepare_windowed_parquet.py: TSFEL + RF + parquet) ---
 tsfel>=0.1.5
 
+# --- Scripts de dados (prepare_paper_features_parquet.py: HC, Catch22, miniROCKET) ---
+aeon>=0.11.0        # MiniRocketMultivariate (multivariate, fixed-length)
+pycatch22>=0.4.2    # catch22_all with catch24=True (22 + mean + std = 24 features)
+antropy>=0.1.6      # spectral_entropy used by hand_crafted_features.py
+joblib>=1.3.0       # serialize fitted MiniRocket for train/test reuse
+
 # --- Testes (pytest tests/) ---
 pytest==9.0.3
