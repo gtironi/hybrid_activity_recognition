@@ -59,15 +59,11 @@ bash scripts/experiments/run_paper_features.sh
 
 The runner is **fully idempotent**: re-running it skips any step whose output (`DONE` marker, parquet, or `joblib`) already exists.
 
-**For SSH / detached execution:**
+**Detached / SSH execution — one command:**
 
 ```bash
-mkdir -p logs
-LOG="logs/run_paper_features_$(date +%Y%m%d_%H%M%S).log"
-nohup bash -c "source venv/bin/activate && bash scripts/experiments/run_paper_features.sh" \
-  > "$LOG" 2>&1 < /dev/null &
+nohup bash scripts/experiments/run_paper_features.sh > logs/rocket_catch.log 2>&1 &
 disown
-echo "PID: $! | log: $LOG"
 ```
 
 Or with `screen` / `tmux` as in [README.md](README.md#3-run-full-experimental-grid).
@@ -84,11 +80,12 @@ dataset/processed/AcTBeCalf/{train,test}.parquet       (row-level, from dataset_
    ├─ 125-sample windows (5 s @ 25 Hz), 50 % overlap, ≥ 90 % label purity
    └─ HC / Catch22 / miniROCKET features over the 8 series
                 ↓
-dataset/processed/AcTBeCalf/paper_features/
-   ├─ windowed_hc_{train,test}.parquet       (raw acc + 88 feature cols)
-   ├─ windowed_catch22_{train,test}.parquet  (raw acc + 192 feature cols)
-   ├─ windowed_rocket_{train,test}.parquet   (raw acc + 9996 feature cols)
-   └─ rocket_model.joblib                    (fitted MiniRocket, reused for test)
+dataset/processed/AcTBeCalf/paper/
+   ├─ hc/windowed_hc_{train,test}.parquet           (raw acc + 88 feature cols)
+   ├─ catch22/windowed_catch22_{train,test}.parquet  (raw acc + 192 feature cols)
+   └─ rocket/
+       ├─ windowed_rocket_{train,test}.parquet       (raw acc + 9996 feature cols)
+       └─ rocket_model.joblib                        (fitted MiniRocket, reused for test)
                 ↓
    scripts/experiments/run_paper_features.sh
    ├─ TS2Vec pretrain (cnn_lstm, robust) — once, on 125-sample raw windows
@@ -137,12 +134,12 @@ Windows where any series returns NaN / non-numeric features are dropped (HC + Ca
 
 ```bash
 python scripts/prepare_paper_features_parquet.py \
-  --features {hc,catch22,rocket} \
+  --features hc \
   --input  dataset/processed/AcTBeCalf/train.parquet \
-  --output dataset/processed/AcTBeCalf/paper_features/windowed_hc_train.parquet \
-  [--rocket-manifest-out PATH]   # rocket train
-  [--rocket-manifest-in  PATH]   # rocket test
-  [--window-size 125] [--overlap 0.5] [--purity-threshold 0.9] [--fs 25] \
+  --output dataset/processed/AcTBeCalf/paper/hc/windowed_hc_train.parquet \
+  [--rocket-manifest-out dataset/processed/AcTBeCalf/paper/rocket/rocket_model.joblib]  # rocket train
+  [--rocket-manifest-in  dataset/processed/AcTBeCalf/paper/rocket/rocket_model.joblib]  # rocket test
+  [--window-size 75] [--overlap 0.5] [--purity-threshold 0.9] [--fs 25] \
   [--group-by calfId segId] [--time-column dateTime] [--label-column behaviour] \
   [--acc-x accX] [--acc-y accY] [--acc-z accZ]
 ```
@@ -269,32 +266,34 @@ You can also run pieces independently — useful for inspection or for replacing
 **Build a single HC parquet:**
 
 ```bash
+mkdir -p dataset/processed/AcTBeCalf/paper/hc
 python scripts/prepare_paper_features_parquet.py \
   --features hc \
   --input  dataset/processed/AcTBeCalf/train.parquet \
-  --output dataset/processed/AcTBeCalf/paper_features/windowed_hc_train.parquet \
+  --output dataset/processed/AcTBeCalf/paper/hc/windowed_hc_train.parquet \
   --window-size 125 --overlap 0.5 --purity-threshold 0.9
 ```
 
 **ROCKET — fit on train, then transform test:**
 
 ```bash
+mkdir -p dataset/processed/AcTBeCalf/paper/rocket
 python scripts/prepare_paper_features_parquet.py --features rocket \
   --input  dataset/processed/AcTBeCalf/train.parquet \
-  --output dataset/processed/AcTBeCalf/paper_features/windowed_rocket_train.parquet \
-  --rocket-manifest-out dataset/processed/AcTBeCalf/paper_features/rocket_model.joblib
+  --output dataset/processed/AcTBeCalf/paper/rocket/windowed_rocket_train.parquet \
+  --rocket-manifest-out dataset/processed/AcTBeCalf/paper/rocket/rocket_model.joblib
 
 python scripts/prepare_paper_features_parquet.py --features rocket \
   --input  dataset/processed/AcTBeCalf/test.parquet \
-  --output dataset/processed/AcTBeCalf/paper_features/windowed_rocket_test.parquet \
-  --rocket-manifest-in  dataset/processed/AcTBeCalf/paper_features/rocket_model.joblib
+  --output dataset/processed/AcTBeCalf/paper/rocket/windowed_rocket_test.parquet \
+  --rocket-manifest-in  dataset/processed/AcTBeCalf/paper/rocket/rocket_model.joblib
 ```
 
 **Train a single supervised run on the HC parquet:**
 
 ```bash
-TRAIN_PARQUET=dataset/processed/AcTBeCalf/paper_features/windowed_hc_train.parquet \
-TEST_PARQUET=dataset/processed/AcTBeCalf/paper_features/windowed_hc_test.parquet  \
+TRAIN_PARQUET=dataset/processed/AcTBeCalf/paper/hc/windowed_hc_train.parquet \
+TEST_PARQUET=dataset/processed/AcTBeCalf/paper/hc/windowed_hc_test.parquet  \
 DATASET_ID=AcTBeCalf_paper_hc \
 EXPERIMENTS_BASE=experiments/paper_features/hc \
 bash -c '
@@ -308,8 +307,8 @@ bash -c '
 
 ```bash
 PYTHONPATH=src python -m random_forest_baseline.tsfel_baseline \
-  --train dataset/processed/AcTBeCalf/paper_features/windowed_hc_train.parquet \
-  --test  dataset/processed/AcTBeCalf/paper_features/windowed_hc_test.parquet \
+  --train dataset/processed/AcTBeCalf/paper/hc/windowed_hc_train.parquet \
+  --test  dataset/processed/AcTBeCalf/paper/hc/windowed_hc_test.parquet \
   --output_dir experiments/paper_features/hc/rf_only \
   --n_estimators 200
 ```

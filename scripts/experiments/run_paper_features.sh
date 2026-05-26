@@ -34,9 +34,9 @@ source "${DIR}/_common.sh"
 # ---------------------------------------------------------------------------
 # Dataset paths.
 # ---------------------------------------------------------------------------
-PAPER_DATA="${REPO_ROOT}/dataset/processed/AcTBeCalf/paper_features"
-mkdir -p "${PAPER_DATA}"
-ROCKET_MODEL="${PAPER_DATA}/rocket_model.joblib"
+PAPER_DATA="${REPO_ROOT}/dataset/processed/AcTBeCalf/paper"
+mkdir -p "${PAPER_DATA}/hc" "${PAPER_DATA}/catch22" "${PAPER_DATA}/rocket"
+ROCKET_MODEL="${PAPER_DATA}/rocket/rocket_model.joblib"
 
 # Raw row-level parquets produced by scripts/dataset_processing.py.
 SRC_TRAIN="${REPO_ROOT}/dataset/processed/AcTBeCalf/train.parquet"
@@ -57,7 +57,7 @@ build_feature_parquet() {
     local FEAT="$1" MODE="$2"
     local IN_PATH OUT_PATH
     if [ "$MODE" = train ]; then IN_PATH="$SRC_TRAIN"; else IN_PATH="$SRC_TEST"; fi
-    OUT_PATH="${PAPER_DATA}/windowed_${FEAT}_${MODE}.parquet"
+    OUT_PATH="${PAPER_DATA}/${FEAT}/windowed_${FEAT}_${MODE}.parquet"
 
     if [ -f "$OUT_PATH" ]; then
         echo ">>> ${OUT_PATH} already exists, skipping"
@@ -122,8 +122,8 @@ for FEAT in hc catch22 rocket; do
     echo ">>> Feature set: ${FEAT}"
     echo "============================================================"
 
-    export TRAIN_PARQUET="${PAPER_DATA}/windowed_${FEAT}_train.parquet"
-    export TEST_PARQUET="${PAPER_DATA}/windowed_${FEAT}_test.parquet"
+    export TRAIN_PARQUET="${PAPER_DATA}/${FEAT}/windowed_${FEAT}_train.parquet"
+    export TEST_PARQUET="${PAPER_DATA}/${FEAT}/windowed_${FEAT}_test.parquet"
     export PRETRAIN_PARQUET="$TRAIN_PARQUET"
     export DATASET_ID="AcTBeCalf_paper_${FEAT}"
     export EXPERIMENTS_BASE="${PAPER_EXP_ROOT}/${FEAT}"
