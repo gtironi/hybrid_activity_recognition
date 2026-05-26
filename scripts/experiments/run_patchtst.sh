@@ -11,9 +11,13 @@ source "${DIR}/_common.sh"
 export BATCH_SIZE="${PATCHTST_BATCH_SIZE:-128}"
 
 ENCODER="patchtst"
-RAW_CKPT_EPOCHS=(10 25 40)
 export EXPERIMENTS_BASE="${EXPERIMENTS_BASE}/${ENCODER}"
 mkdir -p "${EXPERIMENTS_BASE}"
+
+# Default: use only the last (best-trained) pretrain snapshot.
+# Override with PRETRAIN_EPOCHS_LIST="10 25 40" to sweep multiple snapshots
+# (or use run_pretrain_ablation.sh which keeps the ablation in its own folder).
+PRETRAIN_EPOCHS_LIST="${PRETRAIN_EPOCHS_LIST:-40}"
 
 # --- Checkpoint guard: pretrain on raw data if no checkpoint yet ---
 RAW_PRETRAIN_DIR=$(patchtst_mae_raw_dir)
@@ -31,8 +35,8 @@ for MODE in deep_only hybrid; do
     RUN_SUFFIX=fromscratch run_experiment "$ENCODER" "$MODE"
     RUN_SUFFIX=fromscratch run_finetune   "$ENCODER" "$MODE"
 
-    # From raw-data MAE checkpoints (per-epoch snapshots)
-    for EP in "${RAW_CKPT_EPOCHS[@]}"; do
+    # From raw-data MAE checkpoints
+    for EP in $PRETRAIN_EPOCHS_LIST; do
         CKPT="${RAW_PRETRAIN_DIR}/pretrain_ep${EP}.pt"
         if [ ! -f "$CKPT" ]; then
             echo ">>> SKIP frompretrain_raw_ep${EP}: checkpoint not found at ${CKPT}"

@@ -74,6 +74,11 @@ bash "${DIR}/run_patchtst.sh"
 bash "${DIR}/run_patchtst_frozen.sh"
 bash "${DIR}/run_patchtst_hf.sh"
 
+# Pretrain checkpoint ablations (one folder per encoder)
+ENCODER=cnn_lstm bash "${DIR}/run_pretrain_ablation.sh"
+ENCODER=robust   bash "${DIR}/run_pretrain_ablation.sh"
+ENCODER=patchtst bash "${DIR}/run_pretrain_ablation.sh"
+
 # TSFEL baselines
 bash "${DIR}/run_tsfel_baseline.sh"
 bash "${DIR}/run_tsfel_mlp.sh"

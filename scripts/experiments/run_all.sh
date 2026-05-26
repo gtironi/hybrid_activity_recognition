@@ -5,11 +5,14 @@
 #   experiments/pretrain/                 ← shared across all runs (PRETRAIN_BASE)
 #   experiments/runs/<RUN_NAME>/          ← this invocation's outputs
 #     ├── manifest.json
-#     ├── cnn_lstm/
-#     ├── robust/
-#     ├── patchtst/
+#     ├── cnn_lstm/                       (last pretrain snapshot only)
+#     ├── robust/                         (last pretrain snapshot only)
+#     ├── patchtst/                       (last pretrain snapshot only)
 #     ├── patchtst_frozen/
 #     ├── patchtst_hf/
+#     ├── pretrain_ablation_cnn_lstm/     (all snapshots)
+#     ├── pretrain_ablation_robust/       (all snapshots)
+#     ├── pretrain_ablation_patchtst/     (all snapshots)
 #     ├── tsfel_baseline/
 #     └── tsfel_mlp/
 #
@@ -38,6 +41,9 @@ SUB_EXPERIMENTS=(
     patchtst
     patchtst_frozen
     patchtst_hf
+    pretrain_ablation_cnn_lstm
+    pretrain_ablation_robust
+    pretrain_ablation_patchtst
     tsfel_baseline
     tsfel_mlp
 )
@@ -107,7 +113,14 @@ echo "--- PatchTST ablations ---"
 bash "${DIR}/run_patchtst_frozen.sh"
 bash "${DIR}/run_patchtst_hf.sh"
 
-# --- 4) TSFEL baselines ---
+# --- 4) Pretrain checkpoint ablations (one folder per encoder) ---
+echo ""
+echo "--- Pretrain checkpoint ablations ---"
+ENCODER=cnn_lstm bash "${DIR}/run_pretrain_ablation.sh"
+ENCODER=robust   bash "${DIR}/run_pretrain_ablation.sh"
+ENCODER=patchtst bash "${DIR}/run_pretrain_ablation.sh"
+
+# --- 5) TSFEL baselines ---
 echo ""
 echo "--- TSFEL baselines ---"
 bash "${DIR}/run_tsfel_baseline.sh"

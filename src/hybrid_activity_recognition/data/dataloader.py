@@ -204,7 +204,7 @@ def prepare_train_val_test_loaders(
     class_names = le.classes_
     num_classes = len(class_names)
     n_feats = len(feat_cols)
-    in_channels = len(signal_channels)
+    in_channels = signals_tr.shape[1]
 
     pin_memory = torch.cuda.is_available()
     train_ds = CalfHybridDataset(signals_tr_n, features_tr_n, y_tr)

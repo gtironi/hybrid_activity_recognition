@@ -25,14 +25,19 @@ else
     echo ">>> ${ENCODER}: TS2Vec raw checkpoints found at ${TS2VEC_DIR}, skipping pretrain"
 fi
 
+# Default: use only the last (best-trained) pretrain snapshot.
+# Override with PRETRAIN_EPOCHS_LIST="20 50 100" to sweep multiple snapshots
+# (or use run_pretrain_ablation.sh which keeps the ablation in its own folder).
+PRETRAIN_EPOCHS_LIST="${PRETRAIN_EPOCHS_LIST:-100}"
+
 # --- Supervised experiments: 2 input modes × {fromscratch, frompretrain_raw} ---
 for MODE in deep_only hybrid; do
     # From scratch
     RUN_SUFFIX=fromscratch run_experiment "$ENCODER" "$MODE"
     RUN_SUFFIX=fromscratch run_finetune   "$ENCODER" "$MODE"
 
-    # From raw-data TS2Vec checkpoints (ep20/ep50/ep100 snapshots)
-    for EP in 20 50 100; do
+    # From raw-data TS2Vec checkpoints
+    for EP in $PRETRAIN_EPOCHS_LIST; do
         CKPT="${TS2VEC_DIR}/ts2vec_ep${EP}.pt"
         if [ ! -f "$CKPT" ]; then
             echo ">>> SKIP frompretrain_raw_ep${EP}: checkpoint not found at ${CKPT}"
