@@ -3,7 +3,9 @@
 set -euo pipefail
 source "$(dirname "$0")/_common.sh"
 
-OUT="${REPO_ROOT}/experiments/tsfel_baseline_${DATASET_ID}_s${SEED}"
+export EXPERIMENTS_BASE="${EXPERIMENTS_BASE}/tsfel_baseline"
+mkdir -p "${EXPERIMENTS_BASE}"
+OUT="${EXPERIMENTS_BASE}/tsfel_baseline_${DATASET_ID}_s${SEED}"
 
 if [ -f "${OUT}/DONE" ]; then
     echo ">>> TSFEL baseline already complete, skipping"
