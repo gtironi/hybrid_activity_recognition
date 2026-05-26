@@ -18,8 +18,8 @@ EXPERIMENTS_BASE="${EXPERIMENTS_BASE:-${REPO_ROOT}/experiments}"
 # --- Default hyperparameters ---
 SEED="${SEED:-2026}"
 DEVICE="${DEVICE:-cuda}"
-EPOCHS="${EPOCHS:-500}"          # Stage 1: balanced CE, ES patience=25 will stop early
-FINETUNE_EPOCHS="${FINETUNE_EPOCHS:-50}"  # Stage 2: plain CE, low LR
+EPOCHS="${EPOCHS:-200}"          # Stage 1: balanced CE, ES patience=25 will stop early
+FINETUNE_EPOCHS="${FINETUNE_EPOCHS:-20}"  # Stage 2: plain CE, low LR, no early stop
 VAL_FRACTION="${VAL_FRACTION:-0.1}"
 LR="${LR:-1e-3}"
 PRETRAIN_EPOCHS="${PRETRAIN_EPOCHS:-100}"

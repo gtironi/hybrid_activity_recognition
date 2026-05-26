@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import copy
 import logging
+import math
 import os
 from pathlib import Path
 
 import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.metrics import f1_score, recall_score
 from torch.utils.data import DataLoader
 
 from hybrid_activity_recognition.training.loss import balanced_class_weights
@@ -18,6 +20,15 @@ logger = logging.getLogger(__name__)
 def _iter_trainable_params(model: nn.Module):
     return (p for p in model.parameters() if p.requires_grad)
 
+
+def _balanced_acc(y_true: np.ndarray, y_pred: np.ndarray) -> float:
+    """Balanced accuracy restricted to classes present in y_true (no warning)."""
+    labels_present = np.unique(y_true)
+    return float(
+        recall_score(
+            y_true, y_pred, labels=labels_present, average="macro", zero_division=0
+        )
+    )
 
 class Trainer:
     """Supervised training, fine-tuning, and val/test evaluation loops."""
@@ -55,7 +66,7 @@ class Trainer:
         freeze_encoder: bool = False,
     ) -> nn.Module:
         best_wts = copy.deepcopy(self.model.state_dict())
-        best_acc = 0.0
+        best_bal_acc = -math.inf
         stall = 0
         start_epoch = 0
         ckpt_path = self.output_dir / checkpoint_name
@@ -63,11 +74,14 @@ class Trainer:
         if resume_from is not None and Path(resume_from).is_file():
             resume_ckpt = torch.load(resume_from, map_location=self.device, weights_only=True)
             self.model.load_state_dict(resume_ckpt["model_state_dict"])
-            best_acc = resume_ckpt["best_acc"]
+            best_bal_acc = resume_ckpt["best_bal_acc"]
             best_wts = resume_ckpt["best_wts"]
             stall = resume_ckpt["stall"]
             start_epoch = resume_ckpt["epoch"] + 1
-            logger.info("Resuming training from epoch %d (best_acc=%.2f%%)", start_epoch, best_acc)
+            logger.info(
+                "Resuming training from epoch %d (best_bal_acc=%.2f%%)",
+                start_epoch, best_bal_acc,
+            )
 
         self._apply_signal_encoder_freeze(freeze_encoder)
 
@@ -92,8 +106,7 @@ class Trainer:
         for epoch in range(start_epoch, epochs):
             self.model.train()
             train_loss = 0.0
-            correct = 0
-            total = 0
+            t_ys, t_preds = [], []
             for x_sig, x_feat, y in train_dl:
                 x_sig, x_feat, y = x_sig.to(self.device), x_feat.to(self.device), y.to(self.device)
                 optimizer.zero_grad(set_to_none=True)
@@ -106,33 +119,41 @@ class Trainer:
                     )
                 optimizer.step()
                 train_loss += loss.item() * x_sig.size(0)
-                correct += (logits.argmax(1) == y).sum().item()
-                total += y.size(0)
+                t_ys.append(y.detach().cpu().numpy())
+                t_preds.append(logits.argmax(1).detach().cpu().numpy())
 
             avg_train_loss = train_loss / len(train_dl.dataset)
-            train_acc = 100.0 * correct / total
+            train_bal_acc = 100.0 * _balanced_acc(
+                np.concatenate(t_ys), np.concatenate(t_preds)
+            )
 
             self.model.eval()
             val_loss = 0.0
-            v_correct = v_total = 0
+            v_ys, v_preds = [], []
             with torch.no_grad():
                 for x_sig, x_feat, y in val_dl:
                     x_sig, x_feat, y = x_sig.to(self.device), x_feat.to(self.device), y.to(self.device)
                     logits = self.model(x_sig, x_feat)
                     val_loss += criterion(logits, y).item() * x_sig.size(0)
-                    v_correct += (logits.argmax(1) == y).sum().item()
-                    v_total += y.size(0)
+                    v_ys.append(y.cpu().numpy())
+                    v_preds.append(logits.argmax(1).cpu().numpy())
             avg_val_loss = val_loss / len(val_dl.dataset)
-            val_acc = 100.0 * v_correct / v_total
+            val_bal_acc = 100.0 * _balanced_acc(
+                np.concatenate(v_ys), np.concatenate(v_preds)
+            )
 
+            test_suffix = ""
+            if test_dl is not None:
+                te_bal, te_f1 = _eval_test_for_log(self.model, test_dl, self.device)
+                test_suffix = f" | test_bal_acc={te_bal:.2f}% test_f1_macro={te_f1:.2f}%"
             logger.info(
                 "Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%%",
                 epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
             )
             scheduler.step(avg_val_loss)
 
-            if val_acc > best_acc:
-                best_acc = val_acc
+            if val_bal_acc > best_bal_acc:
+                best_bal_acc = val_bal_acc
                 best_wts = copy.deepcopy(self.model.state_dict())
                 torch.save(self.model.state_dict(), ckpt_path)
                 stall = 0
@@ -149,7 +170,7 @@ class Trainer:
                     "model_state_dict": self.model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "scheduler_state_dict": scheduler.state_dict(),
-                    "best_acc": best_acc,
+                    "best_bal_acc": best_bal_acc,
                     "best_wts": best_wts,
                     "stall": stall,
                 },
@@ -162,17 +183,16 @@ class Trainer:
     def finetune(
         self,
         train_dl: DataLoader,
-        val_dl: DataLoader,
         load_path: str | Path,
-        epochs: int = 20,
-        lr: float = 1e-4,
+        epochs: int = 10,
+        lr: float = 1e-5,
         weight_decay: float = 1e-4,
-        scheduler_patience: int = 3,
-        scheduler_factor: float = 0.5,
         grad_clip: float = 1.0,
         checkpoint_name: str = "finetuned_best.pt",
         freeze_encoder: bool = False,
     ) -> nn.Module | None:
+        """Stage 2: short plain-CE finetune on train (val already folded in by caller).
+        No early stopping, no model selection. Saves only the last-epoch checkpoint."""
         load_path = Path(load_path)
         if not load_path.is_file():
             logger.warning("Checkpoint not found: %s", load_path)
@@ -182,16 +202,12 @@ class Trainer:
 
         criterion = nn.CrossEntropyLoss()
         optimizer = torch.optim.AdamW(_iter_trainable_params(self.model), lr=lr, weight_decay=weight_decay)
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", patience=scheduler_patience, factor=scheduler_factor
-        )
-        best_acc = 0.0
         ckpt_path = self.output_dir / checkpoint_name
 
         for epoch in range(epochs):
             self.model.train()
             train_loss = 0.0
-            correct = total = 0
+            t_ys, t_preds = [], []
             for x_sig, x_feat, y in train_dl:
                 x_sig, x_feat, y = x_sig.to(self.device), x_feat.to(self.device), y.to(self.device)
                 optimizer.zero_grad(set_to_none=True)
@@ -204,33 +220,20 @@ class Trainer:
                     )
                 optimizer.step()
                 train_loss += loss.item() * x_sig.size(0)
-                correct += (logits.argmax(1) == y).sum().item()
-                total += y.size(0)
+                t_ys.append(y.detach().cpu().numpy())
+                t_preds.append(logits.argmax(1).detach().cpu().numpy())
 
             avg_train_loss = train_loss / len(train_dl.dataset)
-            train_acc = 100.0 * correct / total
-
-            self.model.eval()
-            val_loss = 0.0
-            v_correct = v_total = 0
-            with torch.no_grad():
-                for x_sig, x_feat, y in val_dl:
-                    x_sig, x_feat, y = x_sig.to(self.device), x_feat.to(self.device), y.to(self.device)
-                    logits = self.model(x_sig, x_feat)
-                    val_loss += criterion(logits, y).item() * x_sig.size(0)
-                    v_correct += (logits.argmax(1) == y).sum().item()
-                    v_total += y.size(0)
-            avg_val_loss = val_loss / len(val_dl.dataset)
-            val_acc = 100.0 * v_correct / v_total
+            train_bal_acc = 100.0 * _balanced_acc(
+                np.concatenate(t_ys), np.concatenate(t_preds)
+            )
             logger.info(
                 "Finetune Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%%",
                 epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
             )
-            scheduler.step(avg_val_loss)
-            if val_acc > best_acc:
-                best_acc = val_acc
-                torch.save(self.model.state_dict(), ckpt_path)
 
+        # Save the last-epoch checkpoint (no selection).
+        torch.save(self.model.state_dict(), ckpt_path)
         return self.model
 
     def evaluate(self, data_loader: DataLoader, checkpoint: str | Path | None = None) -> dict:

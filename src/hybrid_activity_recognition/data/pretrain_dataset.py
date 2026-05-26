@@ -40,6 +40,7 @@ class PretrainWindowDataset(Dataset):
     ):
         df = pd.read_parquet(parquet_path)
         signals = _stack_signals(df)  # (N, C, T)
+        self.in_channels = signals.shape[1]
 
         if signal_mean is None or signal_std is None:
             signal_mean = np.mean(signals, axis=(0, 2), keepdims=True)

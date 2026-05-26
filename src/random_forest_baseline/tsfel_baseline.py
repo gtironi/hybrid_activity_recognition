@@ -14,14 +14,15 @@ Usage:
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, f1_score
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+
+from hybrid_activity_recognition.training.evaluation_report import save_test_evaluation_artifacts
+from hybrid_activity_recognition.training.metrics import classification_metrics_numpy
 
 # Same meta columns used by the DL pipeline
 _META_COLS = frozenset(
@@ -96,26 +97,17 @@ def main():
 
     # Evaluate
     y_pred = clf.predict(X_test)
-    acc = accuracy_score(y_test, y_pred)
-    f1_macro = f1_score(y_test, y_pred, average="macro")
-    f1_weighted = f1_score(y_test, y_pred, average="weighted")
+    m = classification_metrics_numpy(y_test, y_pred)
+    print(
+        f"accuracy={m['accuracy']:.4f} balanced_accuracy={m['balanced_accuracy']:.4f} "
+        f"f1_macro={m['f1_macro']:.4f} f1_weighted={m['f1_weighted']:.4f}"
+    )
 
-    print(f"accuracy={acc:.4f}")
-    print(f"f1_macro={f1_macro:.4f}")
-    print(f"f1_weighted={f1_weighted:.4f}")
-
-    # Save results
-    results = {
-        "accuracy": acc,
-        "f1_macro": f1_macro,
-        "f1_weighted": f1_weighted,
-        "n_estimators": args.n_estimators,
-        "n_features": len(feat_cols),
-        "class_names": le.classes_.tolist(),
-    }
-    with open(out / "results.json", "w") as f:
-        json.dump(results, f, indent=2)
-    print(f"Results saved to {out / 'results.json'}")
+    paths = save_test_evaluation_artifacts(
+        y_test, y_pred, le.classes_, out, stem="test"
+    )
+    print(f"Saved metrics JSON:    {paths['json_path']}")
+    print(f"Saved confusion matrix: {paths['png_path']}")
 
 
 if __name__ == "__main__":

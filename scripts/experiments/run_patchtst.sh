@@ -71,3 +71,46 @@ for MODE in deep_only hybrid; do
 done
 unset FREEZE_ENCODER
 unset RUN_SUFFIX
+
+# ---------------------------------------------------------------------------
+# Extra runs: MAE pretrained on RAW (unlabeled) data.
+#   - Full encoder training (deep_only + hybrid, stage1 + finetune): ep10, ep25, ep40
+#   - HF head and encoder-frozen variants: ep40 only
+# ---------------------------------------------------------------------------
+RAW_PRETRAIN_DIR="${REPO_ROOT}/experiments/patchtst_pretrain_raw_AcTBeCalf_ep40_bs1536_lr1e-3_s2026"
+
+for EP in 10 25 40; do
+    RAW_CKPT="${RAW_PRETRAIN_DIR}/pretrain_ep${EP}.pt"
+    if [ ! -f "$RAW_CKPT" ]; then
+        echo ">>> SKIP raw_ep${EP}: checkpoint not found at ${RAW_CKPT}"
+        continue
+    fi
+
+    echo ">>> PatchTST: from RAW MAE checkpoint ep${EP} (full encoder training)"
+    export RUN_SUFFIX="frompretrain_raw_ep${EP}"
+    unset FREEZE_ENCODER || true
+    for MODE in deep_only hybrid; do
+        run_experiment "patchtst" "$MODE" --patchtst_checkpoint "$RAW_CKPT"
+        run_finetune   "patchtst" "$MODE"
+    done
+done
+
+# HF head and encoder-frozen variants: only with the last raw checkpoint (ep40).
+RAW_CKPT_LAST="${RAW_PRETRAIN_DIR}/pretrain_ep40.pt"
+if [ -f "$RAW_CKPT_LAST" ]; then
+    echo ">>> PatchTST: HF head + RAW MAE ep40"
+    export RUN_SUFFIX="frompretrain_raw_ep40_hf"
+    unset FREEZE_ENCODER || true
+    run_experiment "patchtst" "deep_only" --head patchtst_hf --patchtst_checkpoint "$RAW_CKPT_LAST"
+
+    echo ">>> PatchTST: encoder frozen + RAW MAE ep40"
+    export RUN_SUFFIX="frompretrain_raw_ep40_encfrozen"
+    export FREEZE_ENCODER=1
+    for MODE in deep_only hybrid; do
+        run_experiment "patchtst" "$MODE" --patchtst_checkpoint "$RAW_CKPT_LAST"
+    done
+    unset FREEZE_ENCODER
+else
+    echo ">>> SKIP raw_ep40 hf/encfrozen: checkpoint not found at ${RAW_CKPT_LAST}"
+fi
+unset RUN_SUFFIX

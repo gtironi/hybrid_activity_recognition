@@ -76,6 +76,7 @@ def save_test_evaluation_artifacts(
     payload = {
         "overall": {
             "accuracy": overall["accuracy"],
+            "balanced_accuracy": overall["balanced_accuracy"],
             "f1_macro": overall["f1_macro"],
             "f1_weighted": overall["f1_weighted"],
         },
@@ -127,7 +128,8 @@ def save_test_evaluation_artifacts(
     tbl.scale(1.0, 1.15)
 
     fig.suptitle(
-        f"Overall accuracy={overall['accuracy']:.4f}  |  "
+        f"acc={overall['accuracy']:.4f}  |  "
+        f"bal_acc={overall['balanced_accuracy']:.4f}  |  "
         f"F1 macro={overall['f1_macro']:.4f}  |  "
         f"F1 weighted={overall['f1_weighted']:.4f}",
         fontsize=11,

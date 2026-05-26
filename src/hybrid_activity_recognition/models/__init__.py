@@ -39,6 +39,7 @@ def build_hybrid_model(
     input_mode: str = "hybrid",
     num_classes: int = 19,
     n_tsfel_feats: int = 120,
+    in_channels: int = 3,
     head_name: str = "mlp",
     head_hidden_dim: int = 256,
     head_dropout: float = 0.4,
@@ -80,8 +81,10 @@ def build_hybrid_model(
     elif encoder_name == "patchtst":
         from hybrid_activity_recognition.models.encoders import PatchTSTEncoder
 
+        encoder_kwargs.setdefault("in_channels", in_channels)
         encoder = PatchTSTEncoder(**encoder_kwargs)
     elif encoder_name in _ENCODER_REGISTRY:
+        encoder_kwargs.setdefault("in_channels", in_channels)
         encoder = _ENCODER_REGISTRY[encoder_name](**encoder_kwargs)
     else:
         raise ValueError(
