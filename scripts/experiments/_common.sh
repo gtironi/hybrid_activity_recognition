@@ -32,7 +32,7 @@ EPOCHS="${EPOCHS:-200}"          # Stage 1: balanced CE, ES patience=25 will sto
 FINETUNE_EPOCHS="${FINETUNE_EPOCHS:-20}"  # Stage 2: plain CE, low LR, no early stop
 VAL_FRACTION="${VAL_FRACTION:-0.1}"
 LR="${LR:-1e-3}"
-PRETRAIN_EPOCHS="${PRETRAIN_EPOCHS:-100}"
+PRETRAIN_EPOCHS="${PRETRAIN_EPOCHS:-40}"
 PRETRAIN_LR="${PRETRAIN_LR:-1e-3}"
 # Larger batches for CNN/LSTM/robust/TSFEL-MLP; PatchTST scripts set PATCHTST_BATCH_SIZE.
 BATCH_SIZE_LARGE="${BATCH_SIZE_LARGE:-512}"
@@ -159,8 +159,8 @@ run_ts2vec_pretrain_raw() {
     local OUT
     OUT=$(ts2vec_pretrain_raw_dir "$MODEL")
 
-    if [ -f "${OUT}/ts2vec_ep20.pt" ] && [ -f "${OUT}/ts2vec_ep50.pt" ] && [ -f "${OUT}/ts2vec_ep100.pt" ]; then
-        echo ">>> TS2Vec raw pretrain ${MODEL}: all snapshots found at ${OUT}, skipping" >&2
+    if [ -f "${OUT}/ts2vec_best.pt" ]; then
+        echo ">>> TS2Vec raw pretrain ${MODEL}: best checkpoint found at ${OUT}, skipping" >&2
         echo "${OUT}"
         return 0
     fi
@@ -229,9 +229,8 @@ run_ts2vec_pretrain() {
     local MODEL="$1"
     local OUT="${EXPERIMENTS_BASE}/ts2vec_pretrain_${MODEL}_${DATASET_ID}_ep${PRETRAIN_EPOCHS}_s${SEED}"
 
-    # All three snapshots must exist to skip.
-    if [ -f "${OUT}/ts2vec_ep20.pt" ] && [ -f "${OUT}/ts2vec_ep50.pt" ] && [ -f "${OUT}/ts2vec_ep100.pt" ]; then
-        echo ">>> TS2Vec pretrain ${MODEL}: all snapshots found, skipping" >&2
+    if [ -f "${OUT}/ts2vec_best.pt" ]; then
+        echo ">>> TS2Vec pretrain ${MODEL}: best checkpoint found, skipping" >&2
         echo "${OUT}"
         return 0
     fi

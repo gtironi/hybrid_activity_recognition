@@ -310,6 +310,8 @@ def main() -> None:
     p.add_argument("--acc-x", dest="acc_x", default="accX")
     p.add_argument("--acc-y", dest="acc_y", default="accY")
     p.add_argument("--acc-z", dest="acc_z", default="accZ")
+    p.add_argument("--remap-labels", type=Path, default=None,
+                   help="JSON file {raw_label: new_label}. Labels not in map become 'Other'.")
     args = p.parse_args()
 
     if not args.input.is_file():
@@ -321,6 +323,12 @@ def main() -> None:
     cols_needed = list({*args.group_by, args.time_column, args.acc_x, args.acc_y, args.acc_z, args.label_column})
     df = pd.read_parquet(args.input, columns=cols_needed)
     print(f"  linhas: {len(df):,}")
+
+    if args.remap_labels is not None:
+        import json
+        mapping = json.loads(args.remap_labels.read_text())
+        df[args.label_column] = df[args.label_column].map(lambda x: mapping.get(x, "Other"))
+        print(f"Labels remapped via {args.remap_labels}: {df[args.label_column].value_counts().to_dict()}")
 
     print("Derivando 8 séries (sem filtro, igual ao notebook do paper)...")
     df = add_derived_columns(df, acc_x=args.acc_x, acc_y=args.acc_y, acc_z=args.acc_z)

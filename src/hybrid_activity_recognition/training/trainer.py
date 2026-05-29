@@ -142,13 +142,9 @@ class Trainer:
                 np.concatenate(v_ys), np.concatenate(v_preds)
             )
 
-            test_suffix = ""
-            if test_dl is not None:
-                te_bal, te_f1 = _eval_test_for_log(self.model, test_dl, self.device)
-                test_suffix = f" | test_bal_acc={te_bal:.2f}% test_f1_macro={te_f1:.2f}%"
             logger.info(
                 "Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%%",
-                epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
+                epoch + 1, epochs, avg_train_loss, train_bal_acc, avg_val_loss, val_bal_acc,
             )
             scheduler.step(avg_val_loss)
 
@@ -228,8 +224,8 @@ class Trainer:
                 np.concatenate(t_ys), np.concatenate(t_preds)
             )
             logger.info(
-                "Finetune Ep %03d/%d | train_loss=%.4f acc=%.2f%% | val_loss=%.4f val_acc=%.2f%%",
-                epoch + 1, epochs, avg_train_loss, train_acc, avg_val_loss, val_acc,
+                "Finetune Ep %03d/%d | train_loss=%.4f acc=%.2f%%",
+                epoch + 1, epochs, avg_train_loss, train_bal_acc,
             )
 
         # Save the last-epoch checkpoint (no selection).
