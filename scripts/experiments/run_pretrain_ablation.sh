@@ -19,13 +19,12 @@ source "${DIR}/_common.sh"
 ENCODER="${1:-${ENCODER:-}}"
 case "$ENCODER" in
     cnn_lstm|robust)
-        DEFAULT_LIST="20 50 100"
+        DEFAULT_LIST="best"
         PRETRAIN_DIR=$(ts2vec_pretrain_raw_dir "$ENCODER")
         CKPT_PREFIX="ts2vec_ep"
         INIT_FLAG="--init_encoder_from"
         export BATCH_SIZE="${BATCH_SIZE_LARGE:-512}"
-        # Require at least the last snapshot to be present.
-        REQUIRED_CKPT="${PRETRAIN_DIR}/${CKPT_PREFIX}100.pt"
+        REQUIRED_CKPT="${PRETRAIN_DIR}/ts2vec_best.pt"
         ;;
     patchtst)
         DEFAULT_LIST="10 25 40"
@@ -63,7 +62,11 @@ echo ">>> Output dir:        ${EXPERIMENTS_BASE}"
 unset FREEZE_ENCODER || true
 for MODE in deep_only hybrid; do
     for EP in $EPOCHS_LIST; do
-        CKPT="${PRETRAIN_DIR}/${CKPT_PREFIX}${EP}.pt"
+        if [ "$EP" = "best" ]; then
+            CKPT="${PRETRAIN_DIR}/${CKPT_PREFIX%ep*}best.pt"
+        else
+            CKPT="${PRETRAIN_DIR}/${CKPT_PREFIX}${EP}.pt"
+        fi
         if [ ! -f "$CKPT" ]; then
             echo ">>> SKIP frompretrain_raw_ep${EP}: checkpoint not found at ${CKPT}"
             continue

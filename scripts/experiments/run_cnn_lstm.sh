@@ -14,21 +14,17 @@ ENCODER="cnn_lstm"
 export EXPERIMENTS_BASE="${EXPERIMENTS_BASE}/${ENCODER}"
 mkdir -p "${EXPERIMENTS_BASE}"
 
-# --- Checkpoint guard: pretrain on raw data if no checkpoints yet ---
+# --- Checkpoint guard: pretrain on raw data if no checkpoint yet ---
 TS2VEC_DIR=$(ts2vec_pretrain_raw_dir "$ENCODER")
-if [ ! -f "${TS2VEC_DIR}/ts2vec_ep20.pt" ] \
-        || [ ! -f "${TS2VEC_DIR}/ts2vec_ep50.pt" ] \
-        || [ ! -f "${TS2VEC_DIR}/ts2vec_ep100.pt" ]; then
-    echo ">>> ${ENCODER}: TS2Vec raw checkpoints missing — running pretrain_encoder.sh"
+if [ ! -f "${TS2VEC_DIR}/ts2vec_best.pt" ]; then
+    echo ">>> ${ENCODER}: TS2Vec raw checkpoint missing — running pretrain_encoder.sh"
     ENCODER="$ENCODER" bash "${DIR}/pretrain_encoder.sh"
 else
-    echo ">>> ${ENCODER}: TS2Vec raw checkpoints found at ${TS2VEC_DIR}, skipping pretrain"
+    echo ">>> ${ENCODER}: TS2Vec raw checkpoint found at ${TS2VEC_DIR}, skipping pretrain"
 fi
 
-# Default: use only the last (best-trained) pretrain snapshot.
-# Override with PRETRAIN_EPOCHS_LIST="20 50 100" to sweep multiple snapshots
-# (or use run_pretrain_ablation.sh which keeps the ablation in its own folder).
-PRETRAIN_EPOCHS_LIST="${PRETRAIN_EPOCHS_LIST:-100}"
+# Default: use the best checkpoint saved by the new trainer.
+PRETRAIN_EPOCHS_LIST="${PRETRAIN_EPOCHS_LIST:-best}"
 
 # --- Supervised experiments: 2 input modes × {fromscratch, frompretrain_raw} ---
 for MODE in deep_only hybrid; do
@@ -38,7 +34,11 @@ for MODE in deep_only hybrid; do
 
     # From raw-data TS2Vec checkpoints
     for EP in $PRETRAIN_EPOCHS_LIST; do
-        CKPT="${TS2VEC_DIR}/ts2vec_ep${EP}.pt"
+        if [ "$EP" = "best" ]; then
+            CKPT="${TS2VEC_DIR}/ts2vec_best.pt"
+        else
+            CKPT="${TS2VEC_DIR}/ts2vec_ep${EP}.pt"
+        fi
         if [ ! -f "$CKPT" ]; then
             echo ">>> SKIP frompretrain_raw_ep${EP}: checkpoint not found at ${CKPT}"
             continue

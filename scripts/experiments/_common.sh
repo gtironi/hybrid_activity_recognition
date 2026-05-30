@@ -190,7 +190,7 @@ run_patchtst_mae_raw() {
     local OUT
     OUT=$(patchtst_mae_raw_dir)
 
-    if [ -f "${OUT}/DONE" ]; then
+    if [ -f "${OUT}/DONE" ] && [ -f "${OUT}/best.pt" ]; then
         echo ">>> PatchTST raw MAE pretrain: already complete in ${OUT}, skipping" >&2
         echo "${OUT}"
         return 0
@@ -212,6 +212,7 @@ run_patchtst_mae_raw() {
         --pretrain_epochs "$PATCHTST_PRETRAIN_EPOCHS" \
         --pretrain_lr "$PRETRAIN_LR" \
         --batch_size "${PATCHTST_PRETRAIN_BATCH_SIZE}" \
+        --context_length "$WINDOW_LEN" \
         --seed "$SEED" \
         --device "$DEVICE" \
         "${RESUME_ARGS[@]}" \
