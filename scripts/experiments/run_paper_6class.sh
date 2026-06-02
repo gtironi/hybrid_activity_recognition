@@ -153,6 +153,23 @@ for FEAT in hc catch22 rocket; do
             2>&1 | tee -a "${RF_OUT}/train.log"
         touch "${RF_OUT}/DONE"
     fi
+
+    # ----- RF hyperparameter search on the SAME DL val split -----------
+    RFH_OUT="${EXPERIMENTS_BASE}/rf_hypersearch_${DATASET_ID}_s${SEED}"
+    if [ -f "${RFH_OUT}/DONE" ]; then
+        echo ">>> RF hypersearch ${FEAT}: already complete, skipping"
+    else
+        mkdir -p "${RFH_OUT}"
+        echo ">>> RF hypersearch ${FEAT} (val_fraction=${VAL_FRACTION}) at $(date)"
+        python -m random_forest_baseline.rf_hypersearch \
+            --train "$TRAIN_PARQUET" \
+            --test  "$TEST_PARQUET" \
+            --val_fraction "$VAL_FRACTION" \
+            --seed "$SEED" \
+            --output_dir "$RFH_OUT" \
+            2>&1 | tee -a "${RFH_OUT}/train.log"
+        touch "${RFH_OUT}/DONE"
+    fi
 done
 
 echo ""

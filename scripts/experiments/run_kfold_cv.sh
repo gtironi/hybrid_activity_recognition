@@ -130,6 +130,24 @@ for k in $(seq 0 $((N_FOLDS - 1))); do
         echo ">>> fold_${k}: RF baseline already done, skipping"
     fi
 
+    # --- 3b'. RF hyperparameter search on the SAME DL val split ---
+    echo ""
+    echo ">>> fold_${k}: RF hypersearch (val_fraction=${VAL_FRACTION})"
+    RFH_OUT="${EXPERIMENTS_BASE}/rf_hypersearch_${DATASET_ID}_s${SEED}"
+    if [ ! -f "${RFH_OUT}/DONE" ]; then
+        mkdir -p "$RFH_OUT"
+        python -m random_forest_baseline.rf_hypersearch \
+            --train "$TRAIN_PARQUET" \
+            --test "$TEST_PARQUET" \
+            --val_fraction "$VAL_FRACTION" \
+            --seed "$SEED" \
+            --output_dir "$RFH_OUT" \
+            2>&1 | tee -a "${RFH_OUT}/train.log"
+        touch "${RFH_OUT}/DONE"
+    else
+        echo ">>> fold_${k}: RF hypersearch already done, skipping"
+    fi
+
     # --- 3c. TSFEL-MLP (SECOND, fast, no pretrain) ---
     echo ""
     echo ">>> fold_${k}: TSFEL-MLP"

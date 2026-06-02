@@ -46,6 +46,7 @@ SUB_EXPERIMENTS=(
     pretrain_ablation_patchtst
     tsfel_baseline
     tsfel_mlp
+    rf_hypersearch
 )
 
 # --- Manifest ---
