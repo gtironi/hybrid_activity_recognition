@@ -53,6 +53,20 @@ def main() -> None:
         default="calf",
         help="calf = apply BEHAVIOUR_LABEL_MAP; none = passthrough.",
     )
+    p.add_argument(
+        "--reuse-assignments",
+        type=Path,
+        default=None,
+        help="Reuse test subjects from an existing fold_assignments.json instead of "
+        "recomputing the partition (keeps folds identical across experiments).",
+    )
+    p.add_argument(
+        "--skip-rare-filter",
+        action="store_true",
+        help="Skip the rare-behavior filter and consistent-class intersection. Saves "
+        "subject-disjoint canonical splits with the original behavior column intact "
+        "(for pipelines that remap labels downstream, e.g. paper 6-class).",
+    )
     args = p.parse_args()
 
     if not args.csv.is_file():
@@ -78,7 +92,24 @@ def main() -> None:
     if n_sub < args.n_folds:
         raise SystemExit(f"Not enough subjects ({n_sub}) for {args.n_folds} folds.")
 
-    folds = genSplit.partition_subjects_into_folds(subjects, args.n_folds, wide)
+    if args.reuse_assignments is not None:
+        if not args.reuse_assignments.is_file():
+            raise SystemExit(f"--reuse-assignments not found: {args.reuse_assignments}")
+        src = json.loads(args.reuse_assignments.read_text(encoding="utf-8"))
+        per_fold = src["test_subjects_per_fold"]
+        n_folds_src = len(per_fold)
+        if n_folds_src != args.n_folds:
+            raise SystemExit(
+                f"--reuse-assignments has {n_folds_src} folds but --n-folds={args.n_folds}"
+            )
+        # Coerce reused subject IDs back to the dtype of the subject column.
+        subj_dtype = type(subjects[0])
+        folds = [
+            [subj_dtype(s) for s in per_fold[f"fold_{k}"]] for k in range(args.n_folds)
+        ]
+        print(f"Reusing fold assignments from {args.reuse_assignments}")
+    else:
+        folds = genSplit.partition_subjects_into_folds(subjects, args.n_folds, wide)
 
     assignments = {f"fold_{k}": sorted(folds[k], key=str) for k in range(args.n_folds)}
     assignments_path = args.out_dir / "fold_assignments.json"
@@ -104,6 +135,45 @@ def main() -> None:
     for k in range(args.n_folds):
         ids = assignments[f"fold_{k}"]
         print(f"fold_{k:<3} {len(ids):>7}  {ids}")
+
+    # --- Simple mode: subject-disjoint canonical splits, no filtering. The
+    # original behavior column is preserved so downstream pipelines can remap
+    # labels themselves (e.g. paper 6-class). ---
+    if args.skip_rare_filter:
+        for k in range(args.n_folds):
+            fold_dir = args.out_dir / f"fold_{k}"
+            fold_dir.mkdir(parents=True, exist_ok=True)
+            train, test, method = split_subject_list(
+                df,
+                subject_column=args.subject_column,
+                test_subjects=[str(s) for s in folds[k]],
+            )
+            train.to_parquet(
+                fold_dir / "train.parquet", engine="pyarrow", compression="snappy", index=False
+            )
+            test.to_parquet(
+                fold_dir / "test.parquet", engine="pyarrow", compression="snappy", index=False
+            )
+            report = build_split_report(
+                df,
+                train,
+                test,
+                subject_column=args.subject_column,
+                behavior_column=args.behavior_column,
+                method={**method, "fold_index": k, "n_folds": args.n_folds},
+                test_label_alignment=None,
+            )
+            report["behavior_label_mapping"] = label_meta
+            (fold_dir / "split_report.json").write_text(
+                json.dumps(report, indent=2, default=str), encoding="utf-8"
+            )
+            n_total = len(train) + len(test)
+            print(
+                f"\nfold_{k}: train={len(train):,} ({100*len(train)/n_total:.1f}%)  "
+                f"test={len(test):,} ({100*len(test)/n_total:.1f}%)  "
+                f"{train[args.behavior_column].nunique()} raw classes  → {fold_dir}"
+            )
+        return
 
     # --- Pass 1: split each fold and apply the per-fold rare-behavior filter
     # to discover which classes survive. The intersection across folds is the
