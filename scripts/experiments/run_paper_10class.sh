@@ -1,48 +1,48 @@
 #!/usr/bin/env bash
-# Paper feature experiments — 6-class label remapping (Dissanayake et al., 2025).
+# Paper feature experiments — 10-class ethogram.
 #
-# Identical grid to run_paper_features.sh but labels are remapped to 6 classes:
-#   drinking_milk → Drinking milk | grooming → Grooming | lying → Lying
-#   running → Running | walking → Walking | everything else → Other
+# 9 named behaviours + Other:
+#   Drinking | Eating | Grooming | Lying | Oral manipulation of pen
+#   Play | Run | Standing | Walking | Other
 #
-# Datasets are saved under dataset/processed/AcTBeCalf/paper_6class_w<WINDOW_LEN>/
-# so existing paper_w<N>/ parquets are never overwritten.
+# Step 0 (one-time): generate the 10-class parquets with dataset_processing.py:
+#   python scripts/dataset_processing.py --label-map 10class
+#
+# Datasets are saved under dataset/processed/AcTBeCalf_10class/
+# Feature parquets go under dataset/processed/AcTBeCalf_10class/paper_10class_w<WINDOW_LEN>/
+# Pretrain reuses the same raw checkpoints as run_paper_features.sh (labels
+# don't affect pretraining), so DATASET_ID is temporarily set to the non-10class
+# value when resolving pretrain dirs.
 
 set -euo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 export WINDOW_LEN="${WINDOW_LEN:-75}"
 export WINDOW_STRIDE="${WINDOW_STRIDE:-37}"
-# Pretrain reuses the same raw checkpoints as run_paper_features.sh (same window size,
-# same data — labels don't affect pretraining). DATASET_ID is temporarily set to the
-# non-6class value so ts2vec_pretrain_raw_dir / patchtst_mae_raw_dir resolve to the
-# already-existing dirs. It is overridden per-feature-set during supervised runs.
 export DATASET_ID="${DATASET_ID:-AcTBeCalf_paper_w${WINDOW_LEN}}"
 export RAW_PARQUET="${RAW_PARQUET:-$(cd "${DIR}/../.." && pwd)/dataset/processed/pretrain_raw_windowed_w${WINDOW_LEN}.parquet}"
 
 # shellcheck source=_common.sh
 source "${DIR}/_common.sh"
 
-LABEL_MAP="${REPO_ROOT}/scripts/label_maps/paper_6class.json"
+LABEL_MAP="${REPO_ROOT}/scripts/label_maps/paper_10class.json"
 if [ ! -f "$LABEL_MAP" ]; then
     echo "ERROR: label map not found at ${LABEL_MAP}" >&2
     exit 1
 fi
 
-PAPER_DATA="${REPO_ROOT}/dataset/processed/AcTBeCalf/paper_6class_w${WINDOW_LEN}"
-mkdir -p "${PAPER_DATA}/hc" "${PAPER_DATA}/catch22" "${PAPER_DATA}/rocket"
-ROCKET_MODEL="${PAPER_DATA}/rocket/rocket_model.joblib"
-
-# Row-level parquets from the full 20-class split (default label map).
-# One-time setup:  python scripts/dataset_processing.py
-SRC_TRAIN="${REPO_ROOT}/dataset/processed/AcTBeCalf/train.parquet"
-SRC_TEST="${REPO_ROOT}/dataset/processed/AcTBeCalf/test.parquet"
+SRC_TRAIN="${REPO_ROOT}/dataset/processed/AcTBeCalf_10class/train.parquet"
+SRC_TEST="${REPO_ROOT}/dataset/processed/AcTBeCalf_10class/test.parquet"
 
 if [ ! -f "$SRC_TRAIN" ] || [ ! -f "$SRC_TEST" ]; then
-    echo "ERROR: ${SRC_TRAIN} or ${SRC_TEST} not found." >&2
-    echo "  Run: python scripts/dataset_processing.py" >&2
+    echo "ERROR: 10-class parquets not found. Run first:" >&2
+    echo "  python scripts/dataset_processing.py --label-map 10class" >&2
     exit 1
 fi
+
+PAPER_DATA="${REPO_ROOT}/dataset/processed/AcTBeCalf_10class/paper_10class_w${WINDOW_LEN}"
+mkdir -p "${PAPER_DATA}/hc" "${PAPER_DATA}/catch22" "${PAPER_DATA}/rocket"
+ROCKET_MODEL="${PAPER_DATA}/rocket/rocket_model.joblib"
 
 build_feature_parquet() {
     local FEAT="$1" MODE="$2"
@@ -98,7 +98,7 @@ PATCHTST_CKPT="${PATCHTST_PRETRAIN_DIR}/best.pt"
 [ -f "$ROB_CKPT" ]      || { echo "ERROR: missing $ROB_CKPT"; exit 1; }
 [ -f "$PATCHTST_CKPT" ] || { echo "ERROR: missing $PATCHTST_CKPT"; exit 1; }
 
-PAPER_EXP_ROOT="${EXPERIMENTS_BASE}/paper_6class"
+PAPER_EXP_ROOT="${EXPERIMENTS_BASE}/paper_10class"
 mkdir -p "${PAPER_EXP_ROOT}"
 
 for FEAT in hc catch22 rocket; do
@@ -110,7 +110,7 @@ for FEAT in hc catch22 rocket; do
     export TRAIN_PARQUET="${PAPER_DATA}/${FEAT}/windowed_${FEAT}_train.parquet"
     export TEST_PARQUET="${PAPER_DATA}/${FEAT}/windowed_${FEAT}_test.parquet"
     export PRETRAIN_PARQUET="$TRAIN_PARQUET"
-    export DATASET_ID="AcTBeCalf_paper6c_${FEAT}"
+    export DATASET_ID="AcTBeCalf_paper10c_${FEAT}"
     export EXPERIMENTS_BASE="${PAPER_EXP_ROOT}/${FEAT}"
     mkdir -p "${EXPERIMENTS_BASE}"
     unset FREEZE_ENCODER || true
@@ -160,5 +160,5 @@ for FEAT in hc catch22 rocket; do
 done
 
 echo ""
-echo ">>> All 6-class paper-feature experiments finished at $(date)"
+echo ">>> All 10-class paper-feature experiments finished at $(date)"
 echo ">>> Results under: ${PAPER_EXP_ROOT}"

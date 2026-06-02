@@ -35,6 +35,7 @@ DEFAULT_MIN_TRAIN_PROPORTION_PER_BEHAVIOR = 0.01
 DEFAULT_UNKNOWN_CANONICAL_LABEL = "Other"
 
 # Raw (CSV) behaviour strings → canonical class names. Used before train/test split.
+# Full 20-class map (default).
 BEHAVIOUR_LABEL_MAP: dict[str, list[str]] = {
     "Standing": ["standing"],
     "Lying": ["lying", "lying-down"],
@@ -70,6 +71,25 @@ BEHAVIOUR_LABEL_MAP: dict[str, list[str]] = {
     "Cough": ["cough"],
     "Fall": ["fall"],
     "Vocalization": ["vocalization"],
+}
+
+# 10-class welfare-focused map.
+# 9 named behaviours; everything else → "Other" via unknown_label mechanism.
+BEHAVIOUR_LABEL_MAP_10CLASS: dict[str, list[str]] = {
+    "Drinking": ["drinking", "drinking_milk", "drinking_electrolytes", "drinking|water"],
+    "Eating": ["eating", "eating_concentrates", "eating_bedding", "eating_forage"],
+    "Grooming": ["grooming", "grooming_lying", "grooming|None"],
+    "Lying": ["lying", "lying-down"],
+    "Oral manipulation of pen": ["oral_manipulation_of_pen"],
+    "Play": ["play", "play_object", "headbutt", "jump", "mount"],
+    "Run": ["running"],
+    "Standing": ["standing"],
+    "Walking": ["walking", "backward"],
+}
+
+LABEL_MAPS: dict[str, dict[str, list[str]]] = {
+    "full": BEHAVIOUR_LABEL_MAP,
+    "10class": BEHAVIOUR_LABEL_MAP_10CLASS,
 }
 
 _RAW_TO_CANONICAL: dict[str, str] = {
@@ -113,17 +133,25 @@ def apply_canonical_behavior_labels(
     behavior_column: str,
     *,
     unknown_label: str = DEFAULT_UNKNOWN_CANONICAL_LABEL,
+    label_map: dict[str, list[str]] | None = None,
 ) -> dict:
     """
-    In-place: replace ``behavior_column`` with canonical names from BEHAVIOUR_LABEL_MAP.
-    Normalizes lookup with str(...).lower().strip(); unknown raw values → ``unknown_label``.
+    In-place: replace ``behavior_column`` with canonical names from ``label_map``
+    (defaults to BEHAVIOUR_LABEL_MAP).  Unknown raw values → ``unknown_label``.
     """
+    if label_map is None:
+        label_map = BEHAVIOUR_LABEL_MAP
+    raw_to_canon: dict[str, str] = {
+        str(raw).lower().strip(): canonical
+        for canonical, raw_list in label_map.items()
+        for raw in raw_list
+    }
     _require_columns(df, behavior_column)
     raw = df[behavior_column].astype(str)
     norm = raw.str.lower().str.strip()
-    mapped = norm.map(_RAW_TO_CANONICAL).fillna(unknown_label)
+    mapped = norm.map(raw_to_canon).fillna(unknown_label)
     df[behavior_column] = mapped
-    unmapped_mask = ~norm.isin(_RAW_TO_CANONICAL.keys())
+    unmapped_mask = ~norm.isin(raw_to_canon.keys())
     unmapped_counts: dict[str, int] = {}
     if unmapped_mask.any():
         vc = raw[unmapped_mask].value_counts()
@@ -135,8 +163,9 @@ def apply_canonical_behavior_labels(
             f"→ {unknown_label!r} ({len(unmapped_counts)} rótulos brutos distintos)."
         )
     return {
+        "label_map_name": next((k for k, v in LABEL_MAPS.items() if v is label_map), "custom"),
         "unknown_label": unknown_label,
-        "canonical_classes": sorted(BEHAVIOUR_LABEL_MAP.keys(), key=str),
+        "canonical_classes": sorted(label_map.keys(), key=str),
         "n_rows_unmapped_raw": n_unmapped_rows,
         "unmapped_raw_value_counts": unmapped_counts,
     }
@@ -382,6 +411,12 @@ def main() -> None:
     p = argparse.ArgumentParser(description="CSV train/test → Parquet + split_report.json")
     p.add_argument("--csv", type=Path, default=Path("dataset/AcTBeCalf.csv"))
     p.add_argument("--out-dir", type=Path, default=Path("dataset/processed"))
+    p.add_argument(
+        "--label-map",
+        choices=list(LABEL_MAPS.keys()),
+        default="full",
+        help="Label map to use: 'full' (20-class default) or '10class' (9 named + Other).",
+    )
     p.add_argument("--subject-column", default="calfId")
     p.add_argument("--test-subjects", type=str, nargs="*", default=[str(x) for x in DEFAULT_TEST_SUBJECTS])
     p.add_argument(
@@ -404,14 +439,18 @@ def main() -> None:
     if not args.csv.is_file():
         raise SystemExit(f"Arquivo não encontrado: {args.csv}")
 
-    out = args.out_dir / args.csv.stem
+    suffix = "" if args.label_map == "full" else f"_{args.label_map}"
+    out = args.out_dir / f"{args.csv.stem}{suffix}"
     out.mkdir(parents=True, exist_ok=True)
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     print(f"Lendo {args.csv} ...")
     df = pd.read_csv(args.csv)
     _require_columns(df, args.behavior_column)
-    label_mapping_meta = apply_canonical_behavior_labels(df, args.behavior_column)
+    chosen_label_map = LABEL_MAPS[args.label_map]
+    label_mapping_meta = apply_canonical_behavior_labels(
+        df, args.behavior_column, label_map=chosen_label_map
+    )
     _require_columns(df, args.subject_column)
 
     if args.split_by == "subject":

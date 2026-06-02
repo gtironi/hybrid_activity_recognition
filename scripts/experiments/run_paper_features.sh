@@ -38,12 +38,14 @@ PAPER_DATA="${REPO_ROOT}/dataset/processed/AcTBeCalf/paper_w${WINDOW_LEN}"
 mkdir -p "${PAPER_DATA}/hc" "${PAPER_DATA}/catch22" "${PAPER_DATA}/rocket"
 ROCKET_MODEL="${PAPER_DATA}/rocket/rocket_model.joblib"
 
-# Raw row-level parquets produced by scripts/dataset_processing.py.
+# Raw row-level parquets produced by scripts/dataset_processing.py (full 20-class map, default).
+# One-time setup:  python scripts/dataset_processing.py
 SRC_TRAIN="${REPO_ROOT}/dataset/processed/AcTBeCalf/train.parquet"
 SRC_TEST="${REPO_ROOT}/dataset/processed/AcTBeCalf/test.parquet"
 
 if [ ! -f "$SRC_TRAIN" ] || [ ! -f "$SRC_TEST" ]; then
-    echo "ERROR: ${SRC_TRAIN} or ${SRC_TEST} not found. Run scripts/dataset_processing.py first." >&2
+    echo "ERROR: ${SRC_TRAIN} or ${SRC_TEST} not found." >&2
+    echo "  Run: python scripts/dataset_processing.py" >&2
     exit 1
 fi
 
