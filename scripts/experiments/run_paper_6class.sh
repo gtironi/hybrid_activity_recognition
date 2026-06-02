@@ -127,11 +127,12 @@ for FEAT in hc catch22 rocket; do
 
     export BATCH_SIZE="${PATCHTST_BATCH_SIZE:-128}"
     for MODE in deep_only hybrid; do
-        RUN_SUFFIX=fromscratch        run_experiment patchtst "$MODE"
-        RUN_SUFFIX=fromscratch        run_finetune   patchtst "$MODE"
+        RUN_SUFFIX=fromscratch        run_experiment patchtst "$MODE" --context_length "$WINDOW_LEN"
+        RUN_SUFFIX=fromscratch        run_finetune   patchtst "$MODE" --context_length "$WINDOW_LEN"
         RUN_SUFFIX=frompretrain_raw_ep${PATCHTST_PRETRAIN_EPOCHS} run_experiment patchtst "$MODE" \
-            --patchtst_checkpoint "$PATCHTST_CKPT"
-        RUN_SUFFIX=frompretrain_raw_ep${PATCHTST_PRETRAIN_EPOCHS} run_finetune   patchtst "$MODE"
+            --patchtst_checkpoint "$PATCHTST_CKPT" --context_length "$WINDOW_LEN"
+        RUN_SUFFIX=frompretrain_raw_ep${PATCHTST_PRETRAIN_EPOCHS} run_finetune   patchtst "$MODE" \
+            --context_length "$WINDOW_LEN"
     done
 
     export BATCH_SIZE="${BATCH_SIZE_LARGE:-512}"
