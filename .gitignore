@@ -16,4 +16,12 @@ data/*
 dataset/*
 
 logs/
+elsarticle/
+experiments/*/
+references/
+req_ref/
+ref_analysis/
+experiments_/
+paper_figures/
 
+*.md
