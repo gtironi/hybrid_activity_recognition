@@ -24,4 +24,5 @@ ref_analysis/
 experiments_/
 paper_figures/
 
+*.log
 *.md
