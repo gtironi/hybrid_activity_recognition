@@ -73,12 +73,15 @@ def create_windowed_dataframe(
     acc_x: str,
     acc_y: str,
     acc_z: str,
+    label_map: dict[str, str] | None = None,
 ) -> pd.DataFrame:
     stride = int(window_size * (1 - overlap))
     cols = [*group_by, time_column, acc_x, acc_y, acc_z, label_column]
     df = pd.read_parquet(input_path, columns=cols)
     df = df.rename(columns={label_column: "label"})
     df["label"] = df["label"].astype(str)
+    if label_map is not None:
+        df["label"] = df["label"].map(lambda x: label_map.get(x, "Other"))
 
     acc_cols = [acc_x, acc_y, acc_z]
     window_list = []
@@ -257,6 +260,8 @@ def main() -> None:
     p.add_argument("--acc-x", dest="acc_x", default="accX")
     p.add_argument("--acc-y", dest="acc_y", default="accY")
     p.add_argument("--acc-z", dest="acc_z", default="accZ")
+    p.add_argument("--remap-labels", type=Path, default=None,
+                   help="JSON mapping original label → new label; unmapped values → 'Other'.")
     args = p.parse_args()
 
     if not args.input.is_file():
@@ -269,6 +274,11 @@ def main() -> None:
     if apply_mode and args.feature_manifest_out is not None:
         print("Aviso: em modo apply, --feature-manifest-out é ignorado.")
 
+    label_map: dict[str, str] | None = None
+    if args.remap_labels is not None:
+        label_map = json.loads(args.remap_labels.read_text())
+        print(f"Label remapping active: {args.remap_labels} (unmapped → 'Other')")
+
     df_main = create_windowed_dataframe(
         args.input,
         window_size=args.window_size,
@@ -280,6 +290,7 @@ def main() -> None:
         acc_x=args.acc_x,
         acc_y=args.acc_y,
         acc_z=args.acc_z,
+        label_map=label_map,
     )
     if df_main.empty:
         raise SystemExit("Nenhuma janela gerada; verifique dados e hiperparâmetros.")
