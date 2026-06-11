@@ -6,7 +6,6 @@
 #
 # Usage:
 #   ENCODER=cnn_lstm bash run_pretrain_ablation.sh
-#   ENCODER=robust   bash run_pretrain_ablation.sh
 #   ENCODER=patchtst bash run_pretrain_ablation.sh
 #   bash run_pretrain_ablation.sh cnn_lstm    # positional arg also accepted
 #
@@ -18,7 +17,7 @@ source "${DIR}/_common.sh"
 
 ENCODER="${1:-${ENCODER:-}}"
 case "$ENCODER" in
-    cnn_lstm|robust)
+    cnn_lstm)
         DEFAULT_LIST="best"
         PRETRAIN_DIR=$(ts2vec_pretrain_raw_dir "$ENCODER")
         CKPT_PREFIX="ts2vec_ep"
@@ -35,11 +34,11 @@ case "$ENCODER" in
         REQUIRED_CKPT="${PRETRAIN_DIR}/${CKPT_PREFIX}40.pt"
         ;;
     "")
-        echo "ERROR: ENCODER not set. Usage: ENCODER=cnn_lstm|robust|patchtst bash $0" >&2
+        echo "ERROR: ENCODER not set. Usage: ENCODER=cnn_lstm|patchtst bash $0" >&2
         exit 2
         ;;
     *)
-        echo "ERROR: ENCODER='$ENCODER' not supported. Use cnn_lstm | robust | patchtst." >&2
+        echo "ERROR: ENCODER='$ENCODER' not supported. Use cnn_lstm | patchtst." >&2
         exit 2
         ;;
 esac
@@ -73,6 +72,5 @@ for MODE in deep_only hybrid; do
         fi
         RUN_SUFFIX="frompretrain_raw_ep${EP}" run_experiment "$ENCODER" "$MODE" \
             "$INIT_FLAG" "$CKPT"
-        RUN_SUFFIX="frompretrain_raw_ep${EP}" run_finetune   "$ENCODER" "$MODE"
     done
 done

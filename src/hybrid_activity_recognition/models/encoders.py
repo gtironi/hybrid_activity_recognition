@@ -59,58 +59,6 @@ class CNNLSTMEncoder(SignalEncoder):
         return lstm_out[:, -1, :]
 
 
-class RobustCNNLSTMEncoder(SignalEncoder):
-    """3 Conv1D blocks + 1-layer BiLSTM, h_n concatenation.
-
-    Migrated from ``layers.signal_branch.RobustCNNLSTMSignalBranch``.
-    Default output_dim = 2 * hidden_lstm = 256.
-    Applies Kaiming initialization to all Conv1d and Linear layers.
-    """
-
-    def __init__(self, in_channels: int = 3, hidden_lstm: int = 128):
-        super().__init__()
-        self._output_dim = hidden_lstm * 2
-
-        self.cnn = nn.Sequential(
-            nn.Conv1d(in_channels, 64, kernel_size=3, padding=1),
-            nn.BatchNorm1d(64),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),
-            nn.Conv1d(64, 128, kernel_size=3, padding=1),
-            nn.BatchNorm1d(128),
-            nn.ReLU(),
-            nn.MaxPool1d(kernel_size=2),
-            nn.Conv1d(128, 256, kernel_size=3, padding=1),
-            nn.BatchNorm1d(256),
-            nn.ReLU(),
-        )
-        self.lstm = nn.LSTM(
-            input_size=256,
-            hidden_size=hidden_lstm,
-            num_layers=1,
-            batch_first=True,
-            bidirectional=True,
-        )
-        self._init_weights()
-
-    def _init_weights(self) -> None:
-        for m in self.modules():
-            if isinstance(m, (nn.Conv1d, nn.Linear)):
-                nn.init.kaiming_normal_(m.weight, nonlinearity="relu")
-                if m.bias is not None:
-                    nn.init.zeros_(m.bias)
-
-    @property
-    def output_dim(self) -> int:
-        return self._output_dim
-
-    def forward(self, x_signal: Tensor) -> Tensor:
-        x = self.cnn(x_signal)
-        x = x.permute(0, 2, 1)
-        _, (h_n, _) = self.lstm(x)
-        return torch.cat((h_n[-2], h_n[-1]), dim=1)
-
-
 class PatchTSTEncoder(SignalEncoder):
     """Wrapper around HuggingFace ``PatchTSTModel`` as a SignalEncoder.
 
@@ -173,15 +121,6 @@ class PatchTSTEncoder(SignalEncoder):
         # Mean pool over channels and patches -> (B, d_model)
         return out.last_hidden_state.mean(dim=(1, 2))
 
-    def forward_hidden(self, x_signal: Tensor) -> Tensor:
-        """Return PatchTST last_hidden_state for HF-style classification heads.
-
-        Shape: (B, C, num_patches, d_model)
-        """
-        x = x_signal.permute(0, 2, 1)
-        out = self._backbone(past_values=x)
-        return out.last_hidden_state
-
     def load_pretrained_encoder(self, path: str) -> None:
         """Load backbone weights from a PatchTSTForPretraining checkpoint."""
         state = torch.load(path, map_location="cpu", weights_only=False)
@@ -193,20 +132,3 @@ class PatchTSTEncoder(SignalEncoder):
         self._backbone.load_state_dict(encoder_state, strict=False)
 
 
-class NullSignalEncoder(SignalEncoder):
-    """No-op encoder for TSFEL-only baselines.
-
-    Returns a zero embedding; intended to be ignored by the model forward.
-    """
-
-    def __init__(self, output_dim: int = 1):
-        super().__init__()
-        self._output_dim = output_dim
-
-    @property
-    def output_dim(self) -> int:
-        return self._output_dim
-
-    def forward(self, x_signal: Tensor) -> Tensor:
-        batch = x_signal.shape[0]
-        return x_signal.new_zeros((batch, self._output_dim))

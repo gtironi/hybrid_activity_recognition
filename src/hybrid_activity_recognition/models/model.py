@@ -1,9 +1,8 @@
 """HybridModel — container that wires the four modular components.
 
-Supports three modes:
+Supports two modes:
 - ``deep_only``:  encoder → head  (TSFEL branch and fusion are None)
 - ``hybrid``:     encoder + TSFEL branch → fusion → head
-- ``tsfel_only``: TSFEL branch → head (signal encoder ignored)
 
 The forward signature ``(x_signal, x_features) → logits`` is identical in both
 modes so the Trainer does not need to know which mode is active.
@@ -33,7 +32,7 @@ class HybridModel(nn.Module):
         tsfel_branch: TsfelBranch | None,
         fusion: FusionModule | None,
         head: ClassificationHead,
-        input_mode: Literal["deep_only", "hybrid", "tsfel_only"] = "hybrid",
+        input_mode: Literal["deep_only", "hybrid"] = "hybrid",
     ):
         super().__init__()
         self.input_mode = input_mode
@@ -43,15 +42,7 @@ class HybridModel(nn.Module):
         self.head = head
 
     def forward(self, x_signal: Tensor, x_features: Tensor) -> Tensor:
-        if self.input_mode == "tsfel_only":
-            z_ts = self.tsfel_branch(x_features)
-            return self.head(z_ts)
-
-        # Some heads (HF PatchTSTClassificationHead) expect 4D hidden states.
-        if getattr(self.head, "needs_patchtst_hidden", False):
-            z_sig = self.encoder.forward_hidden(x_signal)
-        else:
-            z_sig = self.encoder(x_signal)
+        z_sig = self.encoder(x_signal)
 
         if self.input_mode == "deep_only":
             return self.head(z_sig)

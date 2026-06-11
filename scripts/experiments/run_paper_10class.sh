@@ -83,19 +83,15 @@ done
 
 echo ">>> Stage 1: encoder pretraining (${WINDOW_LEN} samples)"
 TS2VEC_CNN_DIR=$(ts2vec_pretrain_raw_dir "cnn_lstm")
-TS2VEC_ROB_DIR=$(ts2vec_pretrain_raw_dir "robust")
 PATCHTST_PRETRAIN_DIR=$(patchtst_mae_raw_dir)
 
 ENCODER=cnn_lstm bash "${DIR}/pretrain_encoder.sh" || true
-ENCODER=robust   bash "${DIR}/pretrain_encoder.sh" || true
 bash "${DIR}/pretrain_patchtst.sh" || true
 
 CNN_CKPT="${TS2VEC_CNN_DIR}/ts2vec_best.pt"
-ROB_CKPT="${TS2VEC_ROB_DIR}/ts2vec_best.pt"
 PATCHTST_CKPT="${PATCHTST_PRETRAIN_DIR}/best.pt"
 
 [ -f "$CNN_CKPT" ]      || { echo "ERROR: missing $CNN_CKPT"; exit 1; }
-[ -f "$ROB_CKPT" ]      || { echo "ERROR: missing $ROB_CKPT"; exit 1; }
 [ -f "$PATCHTST_CKPT" ] || { echo "ERROR: missing $PATCHTST_CKPT"; exit 1; }
 
 PAPER_EXP_ROOT="${EXPERIMENTS_BASE}/paper_10class"
@@ -116,32 +112,18 @@ for FEAT in hc catch22 rocket; do
     unset FREEZE_ENCODER || true
 
     export BATCH_SIZE="${BATCH_SIZE_LARGE:-512}"
-    for ENC_AND_CKPT in "cnn_lstm:${CNN_CKPT}" "robust:${ROB_CKPT}"; do
-        ENC="${ENC_AND_CKPT%%:*}"
-        CKPT="${ENC_AND_CKPT##*:}"
-        for MODE in deep_only hybrid; do
-            RUN_SUFFIX=fromscratch        run_experiment "$ENC" "$MODE"
-            RUN_SUFFIX=fromscratch        run_finetune   "$ENC" "$MODE"
-            RUN_SUFFIX=frompretrain_raw_ep${PRETRAIN_EPOCHS} run_experiment "$ENC" "$MODE" \
-                --init_encoder_from "$CKPT"
-            RUN_SUFFIX=frompretrain_raw_ep${PRETRAIN_EPOCHS} run_finetune   "$ENC" "$MODE"
-        done
+    for MODE in deep_only hybrid; do
+        RUN_SUFFIX=fromscratch        run_experiment cnn_lstm "$MODE"
+        RUN_SUFFIX=frompretrain_raw_ep${PRETRAIN_EPOCHS} run_experiment cnn_lstm "$MODE" \
+            --init_encoder_from "$CNN_CKPT"
     done
 
     export BATCH_SIZE="${PATCHTST_BATCH_SIZE:-128}"
     for MODE in deep_only hybrid; do
         RUN_SUFFIX=fromscratch        run_experiment patchtst "$MODE" --context_length "$WINDOW_LEN"
-        RUN_SUFFIX=fromscratch        run_finetune   patchtst "$MODE" --context_length "$WINDOW_LEN"
         RUN_SUFFIX=frompretrain_raw_ep${PATCHTST_PRETRAIN_EPOCHS} run_experiment patchtst "$MODE" \
             --patchtst_checkpoint "$PATCHTST_CKPT" --context_length "$WINDOW_LEN"
-        RUN_SUFFIX=frompretrain_raw_ep${PATCHTST_PRETRAIN_EPOCHS} run_finetune   patchtst "$MODE" \
-            --context_length "$WINDOW_LEN"
     done
-
-    export BATCH_SIZE="${BATCH_SIZE_LARGE:-512}"
-    unset RUN_SUFFIX || true
-    run_experiment "tsfel_mlp" "tsfel_only"
-    run_finetune   "tsfel_mlp" "tsfel_only"
 
     RF_OUT="${EXPERIMENTS_BASE}/rf_baseline_${DATASET_ID}_s${SEED}"
     if [ -f "${RF_OUT}/DONE" ]; then

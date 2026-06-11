@@ -34,7 +34,7 @@ def _check_gradients(model, n_feats=N_FEATS):
         assert p.grad is not None, f"No gradient for param with shape {p.shape}"
 
 
-@pytest.mark.parametrize("encoder_name", ["cnn_lstm", "robust"])
+@pytest.mark.parametrize("encoder_name", ["cnn_lstm"])
 @pytest.mark.parametrize("input_mode", ["deep_only", "hybrid"])
 def test_factory_forward(encoder_name, input_mode):
     from hybrid_activity_recognition.models import build_hybrid_model
@@ -48,7 +48,7 @@ def test_factory_forward(encoder_name, input_mode):
     _check_forward(model)
 
 
-@pytest.mark.parametrize("encoder_name", ["cnn_lstm", "robust"])
+@pytest.mark.parametrize("encoder_name", ["cnn_lstm"])
 @pytest.mark.parametrize("input_mode", ["deep_only", "hybrid"])
 def test_factory_gradients(encoder_name, input_mode):
     from hybrid_activity_recognition.models import build_hybrid_model
@@ -80,25 +80,3 @@ def test_patchtst_factory(input_mode):
     _check_forward(model)
 
 
-def test_tsfel_only_factory_forward():
-    from hybrid_activity_recognition.models import build_hybrid_model
-
-    model = build_hybrid_model(
-        encoder_name="tsfel_mlp",
-        input_mode="tsfel_only",
-        num_classes=N_CLASSES,
-        n_tsfel_feats=N_FEATS,
-    )
-    _check_forward(model)
-
-
-def test_tsfel_only_factory_gradients():
-    from hybrid_activity_recognition.models import build_hybrid_model
-
-    model = build_hybrid_model(
-        encoder_name="tsfel_mlp",
-        input_mode="tsfel_only",
-        num_classes=N_CLASSES,
-        n_tsfel_feats=N_FEATS,
-    )
-    _check_gradients(model)

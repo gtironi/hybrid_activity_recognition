@@ -1,5 +1,5 @@
 """
-Entry point for supervised, pretrain, fine-tune, and test experiments.
+Entry point for supervised, pretrain, and test experiments.
 
 Usage from repository root:
   PYTHONPATH=src python -m hybrid_activity_recognition.main --help
@@ -36,21 +36,18 @@ def parse_args():
     p = argparse.ArgumentParser(description="Hybrid Activity Recognition — experiments CLI")
 
     # --- Mode & model ---
-    p.add_argument("--mode", choices=("supervised", "pretrain", "pretrain_ts2vec", "finetune", "test"), required=True)
+    p.add_argument("--mode", choices=("supervised", "pretrain", "pretrain_ts2vec", "test"), required=True)
     p.add_argument(
         "--model",
         type=str,
-        default="robust",
-        help="Encoder name: cnn_lstm | robust | patchtst | tsfel_mlp",
+        default="cnn_lstm",
+        help="Encoder name: cnn_lstm | patchtst",
     )
     p.add_argument(
         "--input_mode",
-        choices=("deep_only", "hybrid", "tsfel_only"),
+        choices=("deep_only", "hybrid"),
         default="hybrid",
-        help=(
-            "deep_only = encoder → head; hybrid = encoder + TSFEL → fusion → head; "
-            "tsfel_only = TSFEL → head"
-        ),
+        help="deep_only = encoder → head; hybrid = encoder + TSFEL → fusion → head",
     )
 
     # --- Data ---
@@ -79,7 +76,7 @@ def parse_args():
     p.add_argument(
         "--freeze_encoder",
         action="store_true",
-        help="Supervised/finetune: freeze signal encoder (train head / TSFEL / fusion only).",
+        help="Freeze signal encoder (train head / TSFEL / fusion only).",
     )
 
     # --- PatchTST-specific ---
@@ -107,8 +104,8 @@ def parse_args():
         "--head",
         type=str,
         default="mlp",
-        choices=("mlp", "linear", "patchtst_hf"),
-        help="Classification head: mlp | linear | patchtst_hf (requires --model patchtst --input_mode deep_only).",
+        choices=("mlp",),
+        help="Classification head: mlp",
     )
 
     # --- Pretrain-specific (shared) ---
@@ -116,7 +113,7 @@ def parse_args():
     p.add_argument("--pretrain_lr", type=float, default=1e-3)
     # MAE (PatchTST)
     p.add_argument("--mask_ratio", type=float, default=0.75, help="MAE masking ratio for PatchTST pretraining.")
-    # TS2Vec (CNN+LSTM / robust)
+    # TS2Vec (CNN+LSTM)
     p.add_argument("--temporal_unit", type=int, default=0,
                    help="TS2Vec: minimum pooling scale at which to apply temporal contrast.")
 
@@ -223,11 +220,11 @@ def main():
     if args.mode == "pretrain_ts2vec":
         if not args.pretrain_parquet:
             raise SystemExit("pretrain_ts2vec mode requires --pretrain_parquet")
-        if args.model not in ("cnn_lstm", "robust"):
-            raise SystemExit("pretrain_ts2vec only supports --model cnn_lstm or robust")
+        if args.model != "cnn_lstm":
+            raise SystemExit("pretrain_ts2vec only supports --model cnn_lstm")
 
         from hybrid_activity_recognition.data.pretrain_dataset import prepare_pretrain_dataloader
-        from hybrid_activity_recognition.models.encoders import CNNLSTMEncoder, RobustCNNLSTMEncoder
+        from hybrid_activity_recognition.models.encoders import CNNLSTMEncoder
         from hybrid_activity_recognition.training.ts2vec_pretrain import ts2vec_pretrain_encoder
 
         train_dl, _, _ = prepare_pretrain_dataloader(
@@ -237,7 +234,7 @@ def main():
         )
         in_channels = train_dl.dataset.in_channels
         logger.info("ts2vec pretrain in_channels=%d", in_channels)
-        encoder_cls = CNNLSTMEncoder if args.model == "cnn_lstm" else RobustCNNLSTMEncoder
+        encoder_cls = CNNLSTMEncoder
         enc_kwargs = {"in_channels": in_channels}
         if args.hidden_lstm is not None:
             enc_kwargs["hidden_lstm"] = args.hidden_lstm
@@ -281,7 +278,7 @@ def main():
         logger.info("saved per-class metrics: %s", paths["json_path"])
         return
 
-    # ---- Supervised / Finetune ----
+    # ---- Supervised ----
     train_dl, val_dl, test_dl, class_names, num_classes, n_feats, in_channels, _ = _prepare_labeled_loaders(args)
     logger.info("classes=%d n_tsfel_feats=%d in_channels=%d", len(class_names), n_feats, in_channels)
 
@@ -329,54 +326,13 @@ def main():
         res = trainer.evaluate(test_dl, out / "best.pt")
         m = classification_metrics_numpy(res["y_true"], res["y_pred"])
         paths = save_test_evaluation_artifacts(
-            res["y_true"], res["y_pred"], class_names, out, stem="test_stage1"
+            res["y_true"], res["y_pred"], class_names, out, stem="test"
         )
-        logger.info("test stage1: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
+        logger.info("test: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
         logger.info("saved confusion matrix: %s", paths["png_path"])
         logger.info("saved per-class metrics: %s", paths["json_path"])
         return
 
-    if args.mode == "finetune":
-        load_from = args.checkpoint or (out / "best.pt")
-        lr = args.lr if args.lr is not None else 1e-5
-        # Stage 2: fold val into train, then run a short plain-CE finetune.
-        # No early stopping, no selection — last-epoch checkpoint is saved.
-        from hybrid_activity_recognition.data.dataloader import CalfHybridDataset
-        from torch.utils.data import DataLoader as _DL
-        tr_ds, va_ds = train_dl.dataset, val_dl.dataset
-        ft_train_ds = CalfHybridDataset(
-            torch.cat([tr_ds.signals, va_ds.signals], dim=0).numpy(),
-            torch.cat([tr_ds.features, va_ds.features], dim=0).numpy(),
-            torch.cat([tr_ds.labels, va_ds.labels], dim=0).numpy(),
-        )
-        ft_train_dl = _DL(
-            ft_train_ds,
-            batch_size=train_dl.batch_size,
-            shuffle=True,
-            num_workers=train_dl.num_workers,
-            pin_memory=train_dl.pin_memory,
-        )
-        logger.info(
-            "finetune: train+val = %d samples (train=%d, val=%d); test_dl is log-only",
-            len(ft_train_ds), len(tr_ds), len(va_ds),
-        )
-        if trainer.finetune(
-            ft_train_dl,
-            load_path=load_from,
-            epochs=args.epochs,
-            lr=lr,
-            freeze_encoder=args.freeze_encoder,
-        ) is None:
-            raise SystemExit(f"Fine-tune cancelled: checkpoint not found at {load_from}")
-        res = trainer.evaluate(test_dl, out / "finetuned_best.pt")
-        m = classification_metrics_numpy(res["y_true"], res["y_pred"])
-        paths = save_test_evaluation_artifacts(
-            res["y_true"], res["y_pred"], class_names, out, stem="test_stage2"
-        )
-        logger.info("test stage2: acc=%.4f macro_f1=%.4f", m["accuracy"], m["f1_macro"])
-        logger.info("saved confusion matrix: %s", paths["png_path"])
-        logger.info("saved per-class metrics: %s", paths["json_path"])
-        return
 
 
 if __name__ == "__main__":

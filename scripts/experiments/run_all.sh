@@ -6,15 +6,11 @@
 #   experiments/runs/<RUN_NAME>/          ← this invocation's outputs
 #     ├── manifest.json
 #     ├── cnn_lstm/                       (last pretrain snapshot only)
-#     ├── robust/                         (last pretrain snapshot only)
 #     ├── patchtst/                       (last pretrain snapshot only)
 #     ├── patchtst_frozen/
-#     ├── patchtst_hf/
 #     ├── pretrain_ablation_cnn_lstm/     (all snapshots)
-#     ├── pretrain_ablation_robust/       (all snapshots)
 #     ├── pretrain_ablation_patchtst/     (all snapshots)
-#     ├── tsfel_baseline/
-#     └── tsfel_mlp/
+#     └── tsfel_baseline/
 #
 # Override the run name with RUN_NAME=my_label; defaults to a timestamp.
 #
@@ -37,15 +33,11 @@ export EXPERIMENTS_BASE="${RUN_DIR}"
 # Sub-experiments included in this run.
 SUB_EXPERIMENTS=(
     cnn_lstm
-    robust
     patchtst
     patchtst_frozen
-    patchtst_hf
     pretrain_ablation_cnn_lstm
-    pretrain_ablation_robust
     pretrain_ablation_patchtst
     tsfel_baseline
-    tsfel_mlp
 )
 
 # --- Manifest ---
@@ -66,7 +58,6 @@ MANIFEST="${RUN_DIR}/manifest.json"
     printf '    "seed": %s,\n' "${SEED}"
     printf '    "device": "%s",\n' "${DEVICE}"
     printf '    "epochs": %s,\n' "${EPOCHS}"
-    printf '    "finetune_epochs": %s,\n' "${FINETUNE_EPOCHS}"
     printf '    "pretrain_epochs": %s,\n' "${PRETRAIN_EPOCHS}"
     printf '    "patchtst_pretrain_epochs": %s,\n' "${PATCHTST_PRETRAIN_EPOCHS}"
     printf '    "batch_size_large": %s,\n' "${BATCH_SIZE_LARGE}"
@@ -97,34 +88,29 @@ echo ""
 # --- 1) Pretrain encoders on raw data (idempotent; lives in PRETRAIN_BASE) ---
 echo "--- Pretrain (TS2Vec + MAE on raw data) ---"
 ENCODER=cnn_lstm bash "${DIR}/pretrain_encoder.sh"
-ENCODER=robust   bash "${DIR}/pretrain_encoder.sh"
 bash "${DIR}/pretrain_patchtst.sh"
 
-# --- 2) 4-config matrix for each encoder (pretrain step is a no-op now) ---
+# --- 2) Per-encoder experiments ---
 echo ""
 echo "--- Per-encoder experiments ---"
 bash "${DIR}/run_cnn_lstm.sh"
-bash "${DIR}/run_robust.sh"
 bash "${DIR}/run_patchtst.sh"
 
 # --- 3) PatchTST ablations ---
 echo ""
 echo "--- PatchTST ablations ---"
 bash "${DIR}/run_patchtst_frozen.sh"
-bash "${DIR}/run_patchtst_hf.sh"
 
 # --- 4) Pretrain checkpoint ablations (one folder per encoder) ---
 echo ""
 echo "--- Pretrain checkpoint ablations ---"
 ENCODER=cnn_lstm bash "${DIR}/run_pretrain_ablation.sh"
-ENCODER=robust   bash "${DIR}/run_pretrain_ablation.sh"
 ENCODER=patchtst bash "${DIR}/run_pretrain_ablation.sh"
 
-# --- 5) TSFEL baselines ---
+# --- 5) TSFEL baseline ---
 echo ""
-echo "--- TSFEL baselines ---"
+echo "--- TSFEL baseline ---"
 bash "${DIR}/run_tsfel_baseline.sh"
-bash "${DIR}/run_tsfel_mlp.sh"
 
 echo ""
 echo "=== All experiments complete: $(date -Iseconds) ==="

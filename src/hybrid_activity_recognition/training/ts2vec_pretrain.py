@@ -5,7 +5,7 @@ checkpoint that can be loaded into a supervised run via ``--init_encoder_from``
 (no changes needed in main.py).
 
 Supports encoders with ``.cnn`` and ``.lstm`` submodules — i.e.
-``CNNLSTMEncoder`` and ``RobustCNNLSTMEncoder``. PatchTST is intentionally
+``CNNLSTMEncoder``. PatchTST is intentionally
 out of scope: HuggingFace PatchTST already has its own MAE-style pretraining
 via ``--mode pretrain``.
 
@@ -150,8 +150,7 @@ def ts2vec_pretrain_encoder(
     Parameters
     ----------
     encoder
-        A SignalEncoder exposing ``.cnn`` and ``.lstm`` (CNNLSTMEncoder /
-        RobustCNNLSTMEncoder). Trained in-place.
+        A SignalEncoder exposing ``.cnn`` and ``.lstm`` (CNNLSTMEncoder). Trained in-place.
     dataloader
         Yields signal tensors shaped ``(B, C, T)`` — labels are not used.
     output_dir

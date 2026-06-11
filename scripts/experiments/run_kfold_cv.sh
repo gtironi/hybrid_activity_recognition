@@ -49,18 +49,15 @@ fi
 # --- 2. Global pretraining (idempotent; reused across all folds) ---
 ensure_raw_parquet
 run_ts2vec_pretrain_raw cnn_lstm >/dev/null
-run_ts2vec_pretrain_raw robust   >/dev/null
 run_patchtst_mae_raw             >/dev/null
 
 TS2VEC_CNNLSTM_DIR=$(ts2vec_pretrain_raw_dir cnn_lstm)
-TS2VEC_ROBUST_DIR=$(ts2vec_pretrain_raw_dir robust)
 PATCHTST_PRETRAIN_DIR=$(patchtst_mae_raw_dir)
 
 TS2VEC_CNNLSTM_CKPT="${TS2VEC_CNNLSTM_DIR}/ts2vec_best.pt"
-TS2VEC_ROBUST_CKPT="${TS2VEC_ROBUST_DIR}/ts2vec_best.pt"
 PATCHTST_CKPT="${PATCHTST_PRETRAIN_DIR}/pretrain_ep${PATCHTST_PRETRAIN_EPOCHS}.pt"
 
-for ckpt in "$TS2VEC_CNNLSTM_CKPT" "$TS2VEC_ROBUST_CKPT" "$PATCHTST_CKPT"; do
+for ckpt in "$TS2VEC_CNNLSTM_CKPT" "$PATCHTST_CKPT"; do
     if [ ! -f "$ckpt" ]; then
         echo "!!! Pretrain checkpoint missing: $ckpt"
         exit 1
@@ -130,52 +127,26 @@ for k in $(seq 0 $((N_FOLDS - 1))); do
         echo ">>> fold_${k}: RF baseline already done, skipping"
     fi
 
-    # --- 3c. TSFEL-MLP (SECOND, fast, no pretrain) ---
-    echo ""
-    echo ">>> fold_${k}: TSFEL-MLP"
-    BATCH_SIZE="$BATCH_SIZE_LARGE" run_experiment tsfel_mlp tsfel_only
-    BATCH_SIZE="$BATCH_SIZE_LARGE" run_finetune   tsfel_mlp tsfel_only
-
-    # --- 3d. CNN+LSTM: 4 experiments (deep_only/hybrid × fromscratch/frompretrain) ---
+    # --- 3c. CNN+LSTM: deep_only/hybrid × fromscratch/frompretrain ---
     for MODE in deep_only hybrid; do
         echo ""
         echo ">>> fold_${k}: cnn_lstm ${MODE} fromscratch"
         BATCH_SIZE="$BATCH_SIZE_LARGE" RUN_SUFFIX=fromscratch run_experiment cnn_lstm "$MODE"
-        BATCH_SIZE="$BATCH_SIZE_LARGE" RUN_SUFFIX=fromscratch run_finetune   cnn_lstm "$MODE"
 
         echo ">>> fold_${k}: cnn_lstm ${MODE} frompretrain_raw_ep${PRETRAIN_EPOCHS}"
         BATCH_SIZE="$BATCH_SIZE_LARGE" RUN_SUFFIX="frompretrain_raw_ep${PRETRAIN_EPOCHS}" \
             run_experiment cnn_lstm "$MODE" --init_encoder_from "$TS2VEC_CNNLSTM_CKPT"
-        BATCH_SIZE="$BATCH_SIZE_LARGE" RUN_SUFFIX="frompretrain_raw_ep${PRETRAIN_EPOCHS}" \
-            run_finetune   cnn_lstm "$MODE"
     done
 
-    # --- 3e. Robust: 4 experiments ---
-    for MODE in deep_only hybrid; do
-        echo ""
-        echo ">>> fold_${k}: robust ${MODE} fromscratch"
-        BATCH_SIZE="$BATCH_SIZE_LARGE" RUN_SUFFIX=fromscratch run_experiment robust "$MODE"
-        BATCH_SIZE="$BATCH_SIZE_LARGE" RUN_SUFFIX=fromscratch run_finetune   robust "$MODE"
-
-        echo ">>> fold_${k}: robust ${MODE} frompretrain_raw_ep${PRETRAIN_EPOCHS}"
-        BATCH_SIZE="$BATCH_SIZE_LARGE" RUN_SUFFIX="frompretrain_raw_ep${PRETRAIN_EPOCHS}" \
-            run_experiment robust "$MODE" --init_encoder_from "$TS2VEC_ROBUST_CKPT"
-        BATCH_SIZE="$BATCH_SIZE_LARGE" RUN_SUFFIX="frompretrain_raw_ep${PRETRAIN_EPOCHS}" \
-            run_finetune   robust "$MODE"
-    done
-
-    # --- 3f. PatchTST: 4 experiments ---
+    # --- 3d. PatchTST: deep_only/hybrid × fromscratch/frompretrain ---
     for MODE in deep_only hybrid; do
         echo ""
         echo ">>> fold_${k}: patchtst ${MODE} fromscratch"
         BATCH_SIZE="$PATCHTST_BATCH_SIZE" RUN_SUFFIX=fromscratch run_experiment patchtst "$MODE"
-        BATCH_SIZE="$PATCHTST_BATCH_SIZE" RUN_SUFFIX=fromscratch run_finetune   patchtst "$MODE"
 
         echo ">>> fold_${k}: patchtst ${MODE} frompretrain_raw_ep${PATCHTST_PRETRAIN_EPOCHS}"
         BATCH_SIZE="$PATCHTST_BATCH_SIZE" RUN_SUFFIX="frompretrain_raw_ep${PATCHTST_PRETRAIN_EPOCHS}" \
             run_experiment patchtst "$MODE" --patchtst_checkpoint "$PATCHTST_CKPT"
-        BATCH_SIZE="$PATCHTST_BATCH_SIZE" RUN_SUFFIX="frompretrain_raw_ep${PATCHTST_PRETRAIN_EPOCHS}" \
-            run_finetune   patchtst "$MODE"
     done
 
     echo ""
@@ -189,8 +160,7 @@ echo ">>> Aggregating results"
 echo "========================================================"
 python "${REPO_ROOT}/scripts/aggregate_kfold_results.py" \
     --run-dir "$KFOLD_RUN_BASE" \
-    --n-folds "$N_FOLDS" \
-    --stages 1 2
+    --n-folds "$N_FOLDS"
 
 echo ""
 echo ">>> K-fold CV complete: ${KFOLD_RUN_BASE}"

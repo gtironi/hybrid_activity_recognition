@@ -33,7 +33,6 @@ unset FREEZE_ENCODER || true
 for MODE in deep_only hybrid; do
     # From scratch
     RUN_SUFFIX=fromscratch run_experiment "$ENCODER" "$MODE"
-    RUN_SUFFIX=fromscratch run_finetune   "$ENCODER" "$MODE"
 
     # From raw-data MAE checkpoints
     for EP in $PRETRAIN_EPOCHS_LIST; do
@@ -44,6 +43,5 @@ for MODE in deep_only hybrid; do
         fi
         RUN_SUFFIX="frompretrain_raw_ep${EP}" run_experiment "$ENCODER" "$MODE" \
             --patchtst_checkpoint "$CKPT"
-        RUN_SUFFIX="frompretrain_raw_ep${EP}" run_finetune   "$ENCODER" "$MODE"
     done
 done

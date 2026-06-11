@@ -5,7 +5,7 @@ Usage::
     from hybrid_activity_recognition.models import build_hybrid_model
 
     model = build_hybrid_model(
-        encoder_name="robust",
+        encoder_name="cnn_lstm",
         input_mode="hybrid",
         num_classes=19,
         n_tsfel_feats=120,
@@ -14,19 +14,14 @@ Usage::
 
 from __future__ import annotations
 
-from hybrid_activity_recognition.models.encoders import (
-    CNNLSTMEncoder,
-    NullSignalEncoder,
-    RobustCNNLSTMEncoder,
-)
+from hybrid_activity_recognition.models.encoders import CNNLSTMEncoder
 from hybrid_activity_recognition.models.fusion import ConcatFusion
-from hybrid_activity_recognition.models.heads import LinearHead, MLPHead, PatchTSTHFClassificationHead
+from hybrid_activity_recognition.models.heads import MLPHead
 from hybrid_activity_recognition.models.model import HybridModel
 from hybrid_activity_recognition.models.tsfel_branches import MLPTsfelBranch
 
 _ENCODER_REGISTRY: dict[str, type] = {
     "cnn_lstm": CNNLSTMEncoder,
-    "robust": RobustCNNLSTMEncoder,
 }
 
 _TSFEL_BRANCH_REGISTRY: dict[str, type] = {
@@ -53,9 +48,9 @@ def build_hybrid_model(
     Parameters
     ----------
     encoder_name : str
-        ``"cnn_lstm"`` | ``"robust"`` | ``"patchtst"`` | ``"tsfel_mlp"``.
+        ``"cnn_lstm"`` | ``"patchtst"``.
     input_mode : str
-        ``"deep_only"`` | ``"hybrid"`` | ``"tsfel_only"``.
+        ``"deep_only"`` | ``"hybrid"``.
     num_classes : int
         Number of output classes.
     n_tsfel_feats : int
@@ -74,11 +69,7 @@ def build_hybrid_model(
         Extra keyword arguments forwarded to the encoder constructor.
     """
     # Build encoder
-    if encoder_name == "tsfel_mlp":
-        if input_mode != "tsfel_only":
-            raise ValueError("tsfel_mlp requires input_mode='tsfel_only'.")
-        encoder = NullSignalEncoder()
-    elif encoder_name == "patchtst":
+    if encoder_name == "patchtst":
         from hybrid_activity_recognition.models.encoders import PatchTSTEncoder
 
         encoder_kwargs.setdefault("in_channels", in_channels)
@@ -89,7 +80,7 @@ def build_hybrid_model(
     else:
         raise ValueError(
             f"Unknown encoder: {encoder_name!r}. "
-            f"Available: {sorted(list(_ENCODER_REGISTRY) + ['patchtst', 'tsfel_mlp'])}"
+            f"Available: {sorted(list(_ENCODER_REGISTRY) + ['patchtst'])}"
         )
 
     if tsfel_branch_name not in _TSFEL_BRANCH_REGISTRY:
@@ -107,28 +98,16 @@ def build_hybrid_model(
         tsfel_branch = TsfelBranchCls(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
         fusion = ConcatFusion(encoder.output_dim, tsfel_branch.output_dim)
         head_in_dim = fusion.output_dim
-    elif input_mode == "tsfel_only":
-        tsfel_hidden = tsfel_hidden_dim if tsfel_hidden_dim is not None else n_tsfel_feats
-        tsfel_branch = TsfelBranchCls(n_tsfel_feats, tsfel_hidden, dropout=tsfel_dropout)
-        head_in_dim = tsfel_branch.output_dim
     elif input_mode == "deep_only":
         head_in_dim = encoder.output_dim
     else:
         raise ValueError(
-            f"Unknown input_mode: {input_mode!r}. Use 'deep_only', 'hybrid', or 'tsfel_only'."
+            f"Unknown input_mode: {input_mode!r}. Use 'deep_only' or 'hybrid'."
         )
 
     if head_name == "mlp":
         head = MLPHead(head_in_dim, head_hidden_dim, num_classes, dropout=head_dropout)
-    elif head_name == "linear":
-        head = LinearHead(head_in_dim, num_classes)
-    elif head_name == "patchtst_hf":
-        if encoder_name != "patchtst" or input_mode != "deep_only":
-            raise ValueError("head_name='patchtst_hf' requires encoder_name='patchtst' and input_mode='deep_only'.")
-        # Reuse the same config already inside the encoder backbone
-        cfg = encoder._backbone.config  # noqa: SLF001 (intentional: minimal wiring)
-        head = PatchTSTHFClassificationHead(cfg, num_classes)
     else:
-        raise ValueError("Unknown head_name. Use 'mlp', 'linear', or 'patchtst_hf'.")
+        raise ValueError("Unknown head_name. Use 'mlp'.")
 
     return HybridModel(encoder, tsfel_branch, fusion, head, input_mode)

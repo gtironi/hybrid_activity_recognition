@@ -40,9 +40,8 @@ class Trainer:
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
     def _apply_signal_encoder_freeze(self, freeze: bool) -> None:
-        """Freeze (or unfreeze) the signal encoder only (PatchTST / CNN+LSTM / robust)."""
         enc = getattr(self.model, "encoder", None)
-        if enc is None or type(enc).__name__ == "NullSignalEncoder":
+        if enc is None:
             return
         for p in enc.parameters():
             p.requires_grad = not freeze
@@ -176,61 +175,6 @@ class Trainer:
         self.model.load_state_dict(best_wts)
         return self.model
 
-    def finetune(
-        self,
-        train_dl: DataLoader,
-        load_path: str | Path,
-        epochs: int = 10,
-        lr: float = 1e-5,
-        weight_decay: float = 1e-4,
-        grad_clip: float = 1.0,
-        checkpoint_name: str = "finetuned_best.pt",
-        freeze_encoder: bool = False,
-    ) -> nn.Module | None:
-        """Stage 2: short plain-CE finetune on train (val already folded in by caller).
-        No early stopping, no model selection. Saves only the last-epoch checkpoint."""
-        load_path = Path(load_path)
-        if not load_path.is_file():
-            logger.warning("Checkpoint not found: %s", load_path)
-            return None
-        self.model.load_state_dict(torch.load(load_path, map_location=self.device, weights_only=True))
-        self._apply_signal_encoder_freeze(freeze_encoder)
-
-        criterion = nn.CrossEntropyLoss()
-        optimizer = torch.optim.AdamW(_iter_trainable_params(self.model), lr=lr, weight_decay=weight_decay)
-        ckpt_path = self.output_dir / checkpoint_name
-
-        for epoch in range(epochs):
-            self.model.train()
-            train_loss = 0.0
-            t_ys, t_preds = [], []
-            for x_sig, x_feat, y in train_dl:
-                x_sig, x_feat, y = x_sig.to(self.device), x_feat.to(self.device), y.to(self.device)
-                optimizer.zero_grad(set_to_none=True)
-                logits = self.model(x_sig, x_feat)
-                loss = criterion(logits, y)
-                loss.backward()
-                if grad_clip:
-                    torch.nn.utils.clip_grad_norm_(
-                        list(_iter_trainable_params(self.model)), grad_clip
-                    )
-                optimizer.step()
-                train_loss += loss.item() * x_sig.size(0)
-                t_ys.append(y.detach().cpu().numpy())
-                t_preds.append(logits.argmax(1).detach().cpu().numpy())
-
-            avg_train_loss = train_loss / len(train_dl.dataset)
-            train_bal_acc = 100.0 * _balanced_acc(
-                np.concatenate(t_ys), np.concatenate(t_preds)
-            )
-            logger.info(
-                "Finetune Ep %03d/%d | train_loss=%.4f acc=%.2f%%",
-                epoch + 1, epochs, avg_train_loss, train_bal_acc,
-            )
-
-        # Save the last-epoch checkpoint (no selection).
-        torch.save(self.model.state_dict(), ckpt_path)
-        return self.model
 
     def evaluate(self, data_loader: DataLoader, checkpoint: str | Path | None = None) -> dict:
         if checkpoint and Path(checkpoint).is_file():

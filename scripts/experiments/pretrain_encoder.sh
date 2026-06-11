@@ -4,7 +4,6 @@
 #
 # Usage:
 #   ENCODER=cnn_lstm bash pretrain_encoder.sh
-#   ENCODER=robust   bash pretrain_encoder.sh
 #   bash pretrain_encoder.sh cnn_lstm    # positional arg also accepted
 #
 # Output: experiments/ts2vec_pretrain_raw_${ENCODER}_${DATASET_ID}_ep${PRETRAIN_EPOCHS}_s${SEED}/
@@ -14,13 +13,13 @@ source "$(dirname "$0")/_common.sh"
 
 ENCODER="${1:-${ENCODER:-}}"
 case "$ENCODER" in
-    cnn_lstm|robust) ;;
+    cnn_lstm) ;;
     "")
-        echo "ERROR: ENCODER not set. Usage: ENCODER=cnn_lstm|robust bash $0" >&2
+        echo "ERROR: ENCODER not set. Usage: ENCODER=cnn_lstm bash $0" >&2
         exit 2
         ;;
     *)
-        echo "ERROR: ENCODER='$ENCODER' not supported by TS2Vec. Use cnn_lstm or robust." >&2
+        echo "ERROR: ENCODER='$ENCODER' not supported by TS2Vec. Use cnn_lstm." >&2
         echo "       (For PatchTST use pretrain_patchtst.sh instead.)" >&2
         exit 2
         ;;

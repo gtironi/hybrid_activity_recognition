@@ -35,10 +35,3 @@ def test_mlp_head():
     assert out.shape == (B, 19)
 
 
-def test_linear_head():
-    from hybrid_activity_recognition.models.heads import LinearHead
-
-    head = LinearHead(in_dim=256, num_classes=10)
-    x = torch.randn(B, 256)
-    out = head(x)
-    assert out.shape == (B, 10)

@@ -19,7 +19,6 @@ source "${DIR}/_common.sh"
 # Quick supervised settings (only supervised — keep pretrain defaults so the
 # checkpoint guards find the real pretrain artifacts in experiments/pretrain/).
 export EPOCHS=1
-export FINETUNE_EPOCHS=1
 export BATCH_SIZE=16
 export VAL_FRACTION=0.9   # 10% train, 90% val — keeps each step fast.
 
@@ -33,11 +32,9 @@ export EXPERIMENTS_BASE="${RUN_DIR}"
 # Sanity check: existing pretrain artifacts must be in place. We do NOT trigger
 # the windowing or pretrain pipelines from this script — those are tested separately.
 TS2VEC_CNN_DIR=$(ts2vec_pretrain_raw_dir cnn_lstm)
-TS2VEC_ROB_DIR=$(ts2vec_pretrain_raw_dir robust)
 PATCHTST_DIR=$(patchtst_mae_raw_dir)
 missing=()
 [ -f "${TS2VEC_CNN_DIR}/ts2vec_ep100.pt" ] || missing+=("${TS2VEC_CNN_DIR}/ts2vec_ep100.pt")
-[ -f "${TS2VEC_ROB_DIR}/ts2vec_ep100.pt" ] || missing+=("${TS2VEC_ROB_DIR}/ts2vec_ep100.pt")
 [ -f "${PATCHTST_DIR}/pretrain_ep40.pt" ]  || missing+=("${PATCHTST_DIR}/pretrain_ep40.pt")
 if [ "${#missing[@]}" -gt 0 ]; then
     echo "ERROR: smoke test requires existing pretrain artifacts. Missing:" >&2
@@ -52,7 +49,6 @@ cat > "${RUN_DIR}/manifest.json" <<EOF
   "kind": "smoke_test",
   "start_time": "$(date -Iseconds)",
   "epochs": ${EPOCHS},
-  "finetune_epochs": ${FINETUNE_EPOCHS},
   "batch_size": ${BATCH_SIZE},
   "val_fraction": ${VAL_FRACTION},
   "pretrain_base": "${PRETRAIN_BASE}"
@@ -65,23 +61,19 @@ echo "Pretrain: ${PRETRAIN_BASE} (reused, not regenerated)"
 echo "Start:    $(date)"
 echo ""
 
-# Per-encoder full pipelines (pretrain step is a no-op since checkpoints exist)
+# Per-encoder pipelines (pretrain step is a no-op since checkpoints exist)
 bash "${DIR}/run_cnn_lstm.sh"
-bash "${DIR}/run_robust.sh"
 bash "${DIR}/run_patchtst.sh"
 
 # PatchTST ablations
 bash "${DIR}/run_patchtst_frozen.sh"
-bash "${DIR}/run_patchtst_hf.sh"
 
-# Pretrain checkpoint ablations (one folder per encoder)
+# Pretrain checkpoint ablations
 ENCODER=cnn_lstm bash "${DIR}/run_pretrain_ablation.sh"
-ENCODER=robust   bash "${DIR}/run_pretrain_ablation.sh"
 ENCODER=patchtst bash "${DIR}/run_pretrain_ablation.sh"
 
-# TSFEL baselines
+# TSFEL baseline
 bash "${DIR}/run_tsfel_baseline.sh"
-bash "${DIR}/run_tsfel_mlp.sh"
 
 echo ""
 echo "=== Smoke test complete: $(date) ==="
